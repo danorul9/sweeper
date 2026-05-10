@@ -7,10 +7,8 @@ Sweeper scans `~/Library` for files left behind by uninstalled applications and 
 ## Install
 
 ```bash
-# Download the latest binary from GitHub Releases
-curl -LO https://github.com/danorul9/sweeper/releases/latest/download/sweeper-*-darwin-all
-chmod +x sweeper-*-darwin-all
-sudo mv sweeper-*-darwin-all /usr/local/bin/sweeper
+# Via Homebrew
+brew install danorul9/tap/sweeper
 
 # Or build from source
 git clone https://github.com/danorul9/sweeper.git
