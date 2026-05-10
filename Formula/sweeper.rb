@@ -10,7 +10,7 @@ class Sweeper < Formula
   end
 
   def install
-    bin.install "sweeper"
+    bin.install "sweeper-#{version}-darwin-all" => "sweeper"
   end
 
   test do
