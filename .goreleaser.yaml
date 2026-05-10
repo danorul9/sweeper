@@ -48,21 +48,6 @@ release:
   draft: true
   discussion_category_name: announcements
 
-brews:
-  - name: sweeper
-    repository:
-      owner: danorul9
-      name: homebrew-tap
-      branch: main
-    directory: Formula
-    homepage: "https://github.com/danorul9/sweeper"
-    description: "macOS app leftover detector & cleaner — scans ~/Library for orphaned app files with confidence scoring"
-    license: "MIT"
-    test: |
-      system "#{bin}/sweeper", "--help"
-    install: |
-      bin.install "sweeper"
-
 nfpms: []
 
 checksum:
