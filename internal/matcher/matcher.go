@@ -186,31 +186,65 @@ func (m *Matcher) fuzzyMatch(folderName string) (string, float64) {
 
 func (m *Matcher) heuristicMatch(folderName string) []core.Signal {
 	var signals []core.Signal
+	lower := strings.ToLower(folderName)
+
+	if IsKnownApp(lower) {
+		signals = append(signals, core.Signal{
+			Kind:   "known_app",
+			Detail: "Folder name \"" + folderName + "\" matches known application name",
+			Weight: 0.70,
+		})
+		return signals
+	}
 
 	if parts := splitReverseDomain(folderName); len(parts) >= 2 && len(parts) <= 6 {
-		for _, part := range parts {
-			for name := range m.index.Names {
-				if strings.Contains(strings.ToLower(name), strings.ToLower(part)) {
-					signals = append(signals, core.Signal{
-						Kind:   "reverse_domain",
-						Detail: "Reverse-domain \"" + folderName + "\" contains token \"" + part + "\" matching installed app \"" + name + "\"",
-						Weight: 0.65,
-					})
-					return signals
+		last := strings.ToLower(parts[len(parts)-1])
+		if IsKnownApp(last) {
+			signals = append(signals, core.Signal{
+				Kind:   "known_app",
+				Detail: "Reverse-domain \"" + folderName + "\" last component \"" + last + "\" matches known application",
+				Weight: 0.70,
+			})
+			return signals
+		}
+		if len(parts) >= 3 {
+			combined := strings.ToLower(parts[len(parts)-2] + " " + parts[len(parts)-1])
+			if IsKnownApp(combined) {
+				signals = append(signals, core.Signal{
+					Kind:   "known_app",
+					Detail: "Reverse-domain \"" + folderName + "\" combined \"" + combined + "\" matches known application",
+					Weight: 0.70,
+				})
+				return signals
+			}
+		}
+		if m.index != nil {
+			for _, part := range parts {
+				for name := range m.index.Names {
+					if strings.Contains(strings.ToLower(name), strings.ToLower(part)) {
+						signals = append(signals, core.Signal{
+							Kind:   "reverse_domain",
+							Detail: "Reverse-domain \"" + folderName + "\" contains token \"" + part + "\" matching installed app \"" + name + "\"",
+							Weight: 0.65,
+						})
+						return signals
+					}
 				}
 			}
 		}
 	}
 
-	for name := range m.index.Names {
-		if strings.Contains(strings.ToLower(name), strings.ToLower(folderName)) ||
-			strings.Contains(strings.ToLower(folderName), strings.ToLower(name)) {
-			signals = append(signals, core.Signal{
-				Kind:   "partial_name",
-				Detail: "Partial name match: \"" + folderName + "\" ↔ \"" + name + "\"",
-				Weight: 0.50,
-			})
-			return signals
+	if m.index != nil {
+		for name := range m.index.Names {
+			if strings.Contains(strings.ToLower(name), lower) ||
+				strings.Contains(lower, strings.ToLower(name)) {
+				signals = append(signals, core.Signal{
+					Kind:   "partial_name",
+					Detail: "Partial name match: \"" + folderName + "\" ↔ \"" + name + "\"",
+					Weight: 0.50,
+				})
+				return signals
+			}
 		}
 	}
 

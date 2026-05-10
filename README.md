@@ -27,9 +27,11 @@ sudo make install          # installs to /usr/local/bin
 ```
 sweeper                         # Same as scan (default command)
 sweeper scan                    # Interactive TUI — browse, select, delete
+sweeper scan --delete           # Non-interactive: move all leftovers to Trash
 sweeper scan --dry-run          # Terminal list with signals
 sweeper scan --aggressive       # Also scan containers, prefs, app support
 sweeper scan --json             # Machine-readable output
+sweeper scan --min-size 1MB     # Only show items over threshold
 sweeper scan --share-telemetry  # Opt-in: submit unknown folder + bundle ID pairs
 
 sweeper large                   # Find files > 100MB in user directories

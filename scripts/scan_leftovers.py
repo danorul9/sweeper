@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-scan_leftovers.py — Quick leftover app folder scanner for macOS.
+scan_leftovers.py — Legacy quick scanner (logic now in sweeper Go binary).
 
 Scans ~/Library/Application Support/, Caches/, and Saved Application State/
 for folders left behind by uninstalled applications. Cross-references against
 installed apps via mdfind and a known-app lookup table.
 
+Prefer 'sweeper scan' for the full-featured Go implementation.
+
 Usage:
-    python3 scan_leftovers.py              # Show all leftovers
+    sweeper scan                           # Full-featured Go version (preferred)
+    python3 scan_leftovers.py              # Show all leftovers (legacy)
     python3 scan_leftovers.py --delete     # Move confirmed to Trash
     python3 scan_leftovers.py --json       # JSON output for scripting
 """
