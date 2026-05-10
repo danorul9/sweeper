@@ -1,0 +1,72 @@
+version: 2
+
+project_name: sweeper
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - id: sweeper-darwin
+    main: ./cmd/sweeper/
+    binary: sweeper
+    goos:
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    goamd64:
+      - v1
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    tags:
+      - netgo
+
+universal_binaries:
+  - id: sweeper
+    ids:
+      - sweeper-darwin
+    replace: true
+    name_template: "{{.ProjectName}}"
+
+archives:
+  - id: binary
+    formats:
+      - binary
+    name_template: "{{.ProjectName}}-{{.Version}}-{{.Os}}-{{.Arch}}"
+    allow_different_binary_count: true
+
+release:
+  github:
+    owner: danorul9
+    name: sweeper
+  draft: true
+  discussion_category_name: announcements
+
+brews:
+  - name: sweeper
+    repository:
+      owner: danorul9
+      name: homebrew-tap
+      branch: main
+    directory: Formula
+    homepage: "https://github.com/danorul9/sweeper"
+    description: "macOS app leftover detector & cleaner — scans ~/Library for orphaned app files with confidence scoring"
+    license: "MIT"
+    test: |
+      system "#{bin}/sweeper", "--help"
+    install: |
+      bin.install "sweeper"
+
+nfpms: []
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{.Version}}-SNAPSHOT-{{.ShortCommit}}"

@@ -1,0 +1,24 @@
+# Binaries
+/bin/
+/sweeper
+/sweeper.test
+*.test
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+vendor/
+
+# Build artifacts
+dist/
+
+# Coverage
+*.out
