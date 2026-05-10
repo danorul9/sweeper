@@ -1,5 +1,9 @@
 # Sweeper — Intelligent macOS Leftover Detector & Cleaner
 
+[![Release](https://img.shields.io/github/v/release/danorul9/sweeper?label=version)](https://github.com/danorul9/sweeper/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/danorul9/sweeper)](https://go.dev/)
+[![License](https://img.shields.io/github/license/danorul9/sweeper)](LICENSE)
+
 Sweeper scans `~/Library` for files left behind by uninstalled applications and scores each item with explainable confidence — so you know exactly *why* something is safe to delete.
 
 **Differentiator:** Bundle-ID intelligence (not heuristic guessing). If a folder has the same bundle ID as an installed app, it's kept. If the app is gone, it's flagged. 80%+ of false positives eliminated before fuzzy matching even runs.
@@ -21,6 +25,7 @@ sudo make install          # installs to /usr/local/bin
 ## Usage
 
 ```
+sweeper                         # Same as scan (default command)
 sweeper scan                    # Interactive TUI — browse, select, delete
 sweeper scan --dry-run          # Terminal list with signals
 sweeper scan --aggressive       # Also scan containers, prefs, app support
@@ -34,6 +39,7 @@ sweeper reclaim                 # Safe caches & logs only
 sweeper explain <path>          # Why is this folder flagged?
 sweeper undo                    # Restore last cleanup from Trash
 sweeper stats                   # Historical cleanup analytics
+sweeper --version               # Show version
 ```
 
 All commands support `--json` and `--dry-run`.
@@ -54,7 +60,6 @@ Filesystem Scanner → App Index → Fingerprint Matcher → Confidence Scorer �
 - **Bundle-ID Intelligence** — Parses `Info.plist` from every installed app. Exact match = conclusive. No guessing for most apps.
 - **App Families** — Google, Adobe, JetBrains, etc. If any family app is installed, all its folders are kept.
 - **Fingerprint Database** — 30+ curated fingerprints for apps like Docker, Slack, Discord, VS Code, OBS, Electron patterns.
-- **App Families** — Google, Adobe, JetBrains: any family app installed → all family folders kept.
 - **Process Correlation** — Checks `ps` before flagging. Running process → verdict is Installed.
 - **Age Scoring** — mtime tiers: <7d (suspicious), 30d+ (likely), 180d+ (highly likely). Secondary hint only.
 - **Zombie Service Detection** — Scans LaunchAgents/Daemons plists for references to deleted apps.
@@ -83,3 +88,5 @@ make dist      # Universal binary (arm64 + amd64 via lipo)
 ```
 
 Built with Go 1.26, [bubbletea](https://github.com/charmbracelet/bubbletea), [lipgloss](https://github.com/charmbracelet/lipgloss), [cobra](https://github.com/spf13/cobra), [viper](https://github.com/spf13/viper), [xxhash](https://github.com/cespare/xxhash), [howett.net/plist](https://howett.net/plist).
+
+Find a bug or have a feature request? [Open an issue](https://github.com/danorul9/sweeper/issues).
