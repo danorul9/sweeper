@@ -55,6 +55,10 @@ func Build() (*AppIndex, error) {
 		}
 	}
 
+	for name := range KnownAppNames {
+		idx.Names[name] = struct{}{}
+	}
+
 	return idx, nil
 }
 

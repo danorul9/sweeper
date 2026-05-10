@@ -163,6 +163,29 @@ func (m *Matcher) exactMatch(folderName string) *core.Signal {
 		}
 	}
 
+	if parts := splitReverseDomain(folderName); len(parts) >= 3 {
+		last := strings.ToLower(parts[len(parts)-1])
+		for name := range m.index.Names {
+			if strings.EqualFold(name, last) {
+				return &core.Signal{
+					Kind:   "reverse_domain",
+					Detail: "Reverse-domain \"" + folderName + "\" last component \"" + last + "\" matches installed app",
+					Weight: 1.0,
+				}
+			}
+		}
+		combined := strings.ToLower(parts[len(parts)-2]) + " " + last
+		for name := range m.index.Names {
+			if strings.EqualFold(name, combined) {
+				return &core.Signal{
+					Kind:   "reverse_domain",
+					Detail: "Reverse-domain \"" + folderName + "\" combined \"" + combined + "\" matches installed app",
+					Weight: 1.0,
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
