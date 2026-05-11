@@ -23,7 +23,7 @@ Sweeper scans your Mac for files left behind by uninstalled applications — cac
 ## Installation
 
 ```bash
-brew install sweeper
+brew install danorul9/tap/sweeper
 ```
 
 Or build from source:
