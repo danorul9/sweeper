@@ -42,14 +42,34 @@ func trashFile(path string) error {
 		dest = uniqueName(trashDir, base)
 	}
 
+	// Try rename first — works for 95% of files
 	if err := os.Rename(path, dest); err != nil {
-		if isCrossDevice(err) {
+		if shouldFallback(err) {
+			// Try clearing immutable flags before AppleScript
+			tryChflags(path)
+			// Attempt rename again after chflags
+			if err2 := os.Rename(path, dest); err2 == nil {
+				return nil
+			}
 			return fallbackOsaScript(path)
 		}
 		return err
 	}
-
 	return nil
+}
+
+func shouldFallback(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "cross-device") ||
+		strings.Contains(msg, "invalid cross-device") ||
+		strings.Contains(msg, "operation not permitted") ||
+		strings.Contains(msg, "permission denied")
+}
+
+func tryChflags(path string) {
+	// macOS SIP-protected paths (Containers, etc.) sometimes have uchg/uappend
+	// flags. Clearing them can make rename possible.
+	exec.Command("/usr/bin/chflags", "-f", "nouchg,nouappnd,noschg", path).Run()
 }
 
 func uniqueName(dir, base string) string {
@@ -63,26 +83,23 @@ func uniqueName(dir, base string) string {
 	}
 }
 
-func isCrossDevice(err error) bool {
-	return strings.Contains(err.Error(), "cross-device") || strings.Contains(err.Error(), "invalid cross-device")
-}
-
 func fallbackOsaScript(path string) error {
-	script := fmt.Sprintf(`tell app "Finder" to delete POSIX file "%s"`, strings.ReplaceAll(path, `"`, `\"`))
+	// try "move to trash" first — more reliable for protected paths
+	script := fmt.Sprintf(`tell application "Finder" to move POSIX file "%s" to trash`, strings.ReplaceAll(path, `"`, `\"`))
 	cmd := exec.Command("osascript", "-e", script)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(output), "-43") || strings.Contains(string(output), "-1728") {
-			return fallbackOsaScriptMove(path)
+			return fallbackOsaScriptDelete(path)
 		}
 		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
 
-func fallbackOsaScriptMove(path string) error {
-	mvCmd := exec.Command("osascript", "-e",
-		fmt.Sprintf(`tell application "Finder" to move POSIX file "%s" to trash`, strings.ReplaceAll(path, `"`, `\"`)))
-	if output, err := mvCmd.CombinedOutput(); err != nil {
+func fallbackOsaScriptDelete(path string) error {
+	script := fmt.Sprintf(`tell application "Finder" to delete POSIX file "%s"`, strings.ReplaceAll(path, `"`, `\"`))
+	cmd := exec.Command("osascript", "-e", script)
+	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil

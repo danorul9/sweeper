@@ -166,6 +166,38 @@ ignore:
 safe_mode: true
 ```
 
+## Trash Mechanism
+
+Sweeper moves files to `~/.Trash` (never permanently deletes by default). The trash pipeline uses a multi-layered fallback chain:
+
+1. **`os.Rename`** — fastest, works for ~95% of files on the same volume
+2. **`chflags`** — clears immutable flags (`uchg`, `uappnd`, `schg`) on SIP-protected paths, then retries rename
+3. **`osascript` (Finder move to trash)** — AppleScript fallback via Finder for cross-device moves and permission-denied cases
+4. **`osascript` (Finder delete)** — last resort when Finder returns `-43` (file not found) or `-1728` (item gone), performs a permanent delete via Finder
+
+When trashing `LaunchAgents` or `LaunchDaemons` paths, `launchctl unload` is called first to stop the service before moving the file.
+
+## Full Disk Access
+
+Sweeper's **AppleScript fallback** (step 3–4 above) and **`chflags`** (step 2) require **Full Disk Access** on macOS 10.14+ to operate on protected paths. Without it, deletions will fail on:
+
+- `~/Library/Application Support/*`
+- `~/Library/Containers/*`
+- `~/Library/Caches/*`
+- `~/Library/Group Containers/*`
+- `~/Library/Saved Application State/*`
+- SIP-protected dotdirs and system-owned files
+
+**To grant Full Disk Access:**
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**
+2. Click **+** (or unlock to add)
+3. Add your terminal emulator (Terminal, iTerm2, Warp, etc.) — the one you run `sweeper` from
+4. Also add **Finder** (required for the AppleScript fallback path)
+5. Restart your terminal session
+
+> Most files use `os.Rename` and work without Full Disk Access. You'll only hit the fallback on cross-volume moves, SIP-protected containers, or permission-restricted paths.
+
 ## Safety
 
 - All deletions move to Trash — nothing is permanently deleted

@@ -1,7 +1,7 @@
 class Sweeper < Formula
   desc "macOS app leftover detector & cleaner"
   homepage "https://github.com/danorul9/sweeper"
-  version "0.3.0"
+  version "0.3.1"
   license "MIT"
 
   on_macos do
