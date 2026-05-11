@@ -12,21 +12,110 @@ func (m model) View() string {
 	if m.err != nil {
 		return m.errorView()
 	}
-	if m.done {
+	if m.done || m.fDeleted {
 		return m.doneView()
 	}
+	if m.featureLoading {
+		return m.loadingView()
+	}
+	switch m.screen {
+	case screenMenu:
+		return m.menuView()
+	case screenScan:
+		return m.scanView()
+	case screenApps, screenLarge, screenDupes, screenDoctor, screenReclaim, screenUndo, screenStats, screenLiveliness:
+		if m.fConfirmDel {
+			return m.featureConfirmView()
+		}
+		if m.fDeleting {
+			return m.featureDeletingView()
+		}
+		return m.featureView()
+	}
+	return ""
+}
+
+func (m model) errorView() string {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#E5484D")).
+		Bold(true).
+		Render(fmt.Sprintf("Error: %v", m.err))
+}
+
+func (m model) loadingView() string {
+	return appStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Top,
+			headerStyle.Render("Sweeper"),
+			"",
+			emptyStyle.Render("Working..."),
+		),
+	)
+}
+
+func (m model) doneView() string {
+	return appStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Top,
+			headerStyle.Render("Sweeper \u2014 Complete"),
+			"",
+			emptyStyle.Render(fmt.Sprintf("Deleted %d items", m.deletedCount)),
+			"",
+			"Press q to quit.",
+		),
+	)
+}
+
+func (m model) menuView() string {
+	title := headerStyle.Width(m.width - 4).Render("Sweeper \u2014 macOS App Leftover Detector")
+
+	var sections []string
+
+	titleSection := title
+	if m.toast != "" {
+		titleSection = lipgloss.JoinVertical(lipgloss.Left,
+			title,
+			toastStyle.Render(m.toast),
+		)
+	}
+	sections = append(sections, titleSection)
+	sections = append(sections, "")
+
+	var items []string
+	for i, mi := range menuItems {
+		cursor := "  "
+		if i == m.menuCursor {
+			cursor = cursorStyle.Render("\u25b8 ")
+		}
+		line := fmt.Sprintf("%s%s", cursor, mi.title)
+		if i == m.menuCursor {
+			items = append(items, selectedItemStyle.Render(line))
+		} else {
+			items = append(items, itemStyle.Render(line))
+		}
+		items = append(items, itemStyle.Render(fmt.Sprintf("   %s", detailValueStyle.Render(mi.description))))
+		items = append(items, "")
+	}
+
+	sections = append(sections, lipgloss.JoinVertical(lipgloss.Left, items...))
+
+	footer := footerStyle.Render("\u2191\u2193 nav | enter select | q quit")
+	sections = append(sections, footer)
+
+	return appStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Top, sections...),
+	)
+}
+
+func (m model) scanView() string {
 	if m.confirmDelete {
 		return m.confirmView()
 	}
 	if m.deleting {
 		return m.deletingView()
 	}
-	return m.mainView()
-}
-
-func (m model) mainView() string {
+	if m.results == nil {
+		return m.loadingView()
+	}
 	var b strings.Builder
-
 	b.WriteString(m.headerView())
 	b.WriteString("\n")
 	if m.searching {
@@ -39,33 +128,232 @@ func (m model) mainView() string {
 	b.WriteString(m.listView())
 	b.WriteString("\n")
 	b.WriteString(m.detailView())
-	b.WriteString(m.footerView())
-
+	b.WriteString(m.scanFooterView())
 	return appStyle.Render(b.String())
 }
 
-func (m model) errorView() string {
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#E5484D")).
-		Bold(true).
-		Render(fmt.Sprintf("Error: %v", m.err))
+func (m model) featureView() string {
+	title := headerStyle.Width(m.width - 4).Render(m.fTitle)
+
+	if len(m.items) == 0 {
+		body := emptyStyle.Render("No items found.")
+		footer := footerStyle.Render("esc back | q quit")
+		return appStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Top, title, "", body, footer),
+		)
+	}
+
+	// Calculate info panel height for scroll accounting
+	infoPanelHeight := m.featureInfoPanelHeight()
+
+	availableHeight := m.height - 6 - infoPanelHeight
+	if availableHeight < 3 {
+		availableHeight = 3
+	}
+	start := 0
+	if m.cursor > availableHeight-1 {
+		start = m.cursor - availableHeight + 1
+	}
+	end := start + availableHeight
+	if end > len(m.items) {
+		end = len(m.items)
+	}
+
+	// Horizontal padding from outer containers
+	// appStyle has Padding(1,2) = 2 left padding
+	// itemStyle has PaddingLeft(2) = 2 left padding
+	horizontalPad := 2 + 2 // appStyle left + itemStyle left
+
+	var lines []string
+	for i, item := range m.items {
+		if i < start {
+			continue
+		}
+		if i >= end {
+			break
+		}
+
+		if item.IsHeader {
+			hdr := groupHeaderStyle.Width(m.width - 4).Render(item.Name)
+			lines = append(lines, hdr)
+			continue
+		}
+
+		cursor := " "
+		if i == m.cursor {
+			cursor = cursorStyle.Render("\u25b8")
+		}
+
+		check := " "
+		if m.fSelected[i] {
+			check = cursorStyle.Render("\u25cf")
+		}
+
+		name := item.Name
+		if name == "" {
+			name = item.Path
+		}
+		// Show full path in the list for all feature screens
+		displayName := item.Path
+		if displayName == "" {
+			displayName = name
+		}
+		// Build left part: cursor + check + path
+		left := fmt.Sprintf("%s %s %s", cursor, check, displayName)
+
+		// Build right part: size + age + detail
+		sizeStr := ""
+		if item.Size > 0 {
+			sizeStr = sizeStyle.Render(formatBytes(item.Size))
+		}
+		ageStr := ""
+		if item.AgeDays >= 0 {
+			ageStr = "  " + ageStyle(item.AgeDays)
+		}
+		right := sizeStr + ageStr
+
+		// Detail with dynamic truncation
+		if item.Detail != "" {
+			detailText := item.Detail
+			// Estimate space for detail: remaining width after left + right
+			leftWidth := lipgloss.Width(left)
+			rightWidth := lipgloss.Width(right)
+			detailBudget := m.width - leftWidth - rightWidth - horizontalPad - 2 // 2 for "  " prefix
+			if detailBudget < 4 {
+				detailBudget = 4
+			}
+			if len(detailText) > detailBudget-3 {
+				detailText = detailText[:detailBudget-3] + "..."
+			}
+			right += "  " + signalStyle.Render(detailText)
+		}
+
+		// Calculate gap to right-justify
+		gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - horizontalPad
+		if gap < 1 {
+			gap = 1
+		}
+
+		line := left + strings.Repeat(" ", gap) + right
+		if i == m.cursor {
+			lines = append(lines, selectedItemStyle.Render(line))
+		} else {
+			lines = append(lines, itemStyle.Render(line))
+		}
+	}
+
+	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
+
+	totalLine := ""
+	if m.fTotal != "" {
+		totalLine = "  " + detailValueStyle.Render(m.fTotal)
+	}
+
+	selInfo := ""
+	if n := m.fTotalSelected(); n > 0 {
+		selInfo = fmt.Sprintf(" %d selected (%s) |", n, formatBytes(m.fSelectedSize()))
+	}
+
+	footer := footerStyle.Render(fmt.Sprintf("%s%s ↑↓/jk nav | space toggle | a all | n none | d delete | esc back | q quit", selInfo, totalLine))
+
+	// Info panel at the bottom
+	infoPanel := m.featureInfoPanel()
+
+	return appStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Top, title, "", body, infoPanel, footer),
+	)
 }
 
-func (m model) doneView() string {
+func (m model) featureConfirmView() string {
+	n := m.fTotalSelected()
+	sz := formatBytes(m.fSelectedSize())
+
+	var items []string
+	for i := range m.items {
+		if m.fSelected[i] {
+			items = append(items, fmt.Sprintf("  \u2022 %s (%s)", m.items[i].Name, formatBytes(m.items[i].Size)))
+		}
+	}
+
 	return appStyle.Render(
 		lipgloss.JoinVertical(lipgloss.Top,
-			headerStyle.Render("Sweeper — Complete"),
+			confirmTitleStyle.Render(fmt.Sprintf("Delete %d items (%s)?", n, sz)),
 			"",
-			emptyStyle.Render(fmt.Sprintf("Deleted %d items", m.deletedCount)),
+			lipgloss.JoinVertical(lipgloss.Left, items...),
 			"",
-			"Press q to quit.",
+			helpKeyStyle.Render("y")+helpDescStyle.Render("es, delete")+"  "+helpKeyStyle.Render("n")+helpDescStyle.Render("o, cancel"),
+			"",
 		),
 	)
 }
 
+func (m model) featureDeletingView() string {
+	return appStyle.Render(
+		confirmTitleStyle.Render(fmt.Sprintf("Deleting %d items...", m.fTotalSelected())),
+	)
+}
+
+func (m model) featureInfoPanel() string {
+	if len(m.items) == 0 || m.cursor >= len(m.items) {
+		return ""
+	}
+	item := m.items[m.cursor]
+	if item.IsHeader || len(item.InfoRows) == 0 {
+		return ""
+	}
+
+	infoStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#8E8E93")).
+		PaddingLeft(1)
+
+	// Limit rows to fit on screen
+	maxRows := 6
+	rows := item.InfoRows
+	if len(rows) > maxRows {
+		rows = rows[:maxRows]
+	}
+
+	var lines []string
+	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3C")).Render(strings.Repeat("─", m.width-4))
+	lines = append(lines, sep)
+	for _, row := range rows {
+		lines = append(lines, infoStyle.Render(row))
+	}
+	lines = append(lines, sep)
+
+	s := strings.Builder{}
+	for i, line := range lines {
+		if i > 0 {
+			s.WriteString("\n")
+		}
+		s.WriteString(line)
+	}
+	return s.String()
+}
+
+func (m model) featureInfoPanelHeight() int {
+	if len(m.items) == 0 || m.cursor >= len(m.items) {
+		return 0
+	}
+	item := m.items[m.cursor]
+	if item.IsHeader || len(item.InfoRows) == 0 {
+		return 0
+	}
+	// 2 separator lines + max 5 content rows + 1 padding = 8
+	h := len(item.InfoRows) + 2
+	if h > 7 {
+		h = 7
+	}
+	return h
+}
+
 func (m model) headerView() string {
 	totalSize := formatBytes(m.results.TotalSize)
-	title := fmt.Sprintf("Sweeper — %d items  %s", len(m.results.Items), totalSize)
+	knownInfo := ""
+	if m.results.KnownAppsCount > 0 {
+		knownInfo = fmt.Sprintf(" | %d apps (%d known)", m.results.AppCount, m.results.KnownAppsCount)
+	}
+	title := fmt.Sprintf("Sweeper \u2014 %d items  %s%s", len(m.results.Items), totalSize, knownInfo)
 	return headerStyle.Width(m.width - 4).Render(title)
 }
 
@@ -87,7 +375,11 @@ func (m model) listView() string {
 		return emptyStyle.Render("No items in this category.")
 	}
 
-	availableHeight := m.height - 12
+	detailH := m.detailViewHeight()
+	availableHeight := m.height - 8 - detailH
+	if availableHeight < 3 {
+		availableHeight = 3
+	}
 	start := 0
 	if m.cursor > availableHeight-1 {
 		start = m.cursor - availableHeight + 1
@@ -111,12 +403,12 @@ func (m model) listView() string {
 
 		cursor := " "
 		if i == m.cursor {
-			cursor = cursorStyle.Render("▸")
+			cursor = cursorStyle.Render("\u25b8")
 		}
 
 		check := " "
 		if sel {
-			check = cursorStyle.Render("●")
+			check = cursorStyle.Render("\u25cf")
 		}
 
 		name := item.Name
@@ -168,6 +460,22 @@ func (m model) verdictBadge(match *core.MatchResult) string {
 	}
 }
 
+func (m model) detailViewHeight() int {
+	items := m.filteredItems()
+	if len(items) == 0 {
+		return 0
+	}
+	if m.cursor >= len(items) {
+		return 0
+	}
+	item := items[m.cursor]
+	match := item.Match
+	if match == nil {
+		return 0
+	}
+	return 8 + len(match.Signals)
+}
+
 func (m model) detailView() string {
 	items := m.filteredItems()
 	if len(items) == 0 {
@@ -185,7 +493,7 @@ func (m model) detailView() string {
 
 	var lines []string
 	lines = append(lines, "")
-	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3C")).Render(strings.Repeat("─", m.width-4))
+	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("#3A3A3C")).Render(strings.Repeat("\u2500", m.width-4))
 	lines = append(lines, sep)
 	lines = append(lines, fmt.Sprintf(" %s", itemStyle.Render(item.Path)))
 	lines = append(lines, "")
@@ -213,10 +521,10 @@ func (m model) searchBarView() string {
 		Foreground(lipgloss.Color("#FFFFFF")).
 		Background(lipgloss.Color("#3A3A3C")).
 		Padding(0, 1).
-		Render(fmt.Sprintf("Search: %s█", m.searchQuery))
+		Render(fmt.Sprintf("Search: %s\u2588", m.searchQuery))
 }
 
-func (m model) footerView() string {
+func (m model) scanFooterView() string {
 	selected := m.totalSelected()
 	selectedSize := formatBytes(m.selectedSize())
 	selInfo := ""
@@ -225,7 +533,7 @@ func (m model) footerView() string {
 	}
 
 	return footerStyle.Render(
-		fmt.Sprintf("%s ↑↓/jk nav | space toggle | d delete | tab switch | / search | q quit",
+		fmt.Sprintf("%s \u2191\u2193/jk nav | space toggle | d delete | tab switch | / search | esc menu | q quit",
 			selInfo,
 		),
 	)
@@ -238,7 +546,7 @@ func (m model) confirmView() string {
 	var items []string
 	for i, item := range m.results.Items {
 		if m.selected[i] {
-			items = append(items, fmt.Sprintf("  • %s (%s)", item.Name, formatBytes(item.Size)))
+			items = append(items, fmt.Sprintf("  \u2022 %s (%s)", item.Name, formatBytes(item.Size)))
 		}
 	}
 

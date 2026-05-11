@@ -6,6 +6,7 @@ import (
 
 	"github.com/danorul9/sweeper/internal/appindex"
 	"github.com/danorul9/sweeper/internal/core"
+	"github.com/sahilm/fuzzy"
 )
 
 type Matcher struct {
@@ -135,8 +136,47 @@ func (m *Matcher) processMatch(folderName string) []core.Signal {
 }
 
 func (m *Matcher) exactMatch(folderName string) *core.Signal {
+	if sig := m.matchDirect(folderName); sig != nil {
+		return sig
+	}
+
+	baseName := stripSuffixes(folderName)
+	if baseName != folderName {
+		if sig := m.matchDirect(baseName); sig != nil {
+			return sig
+		}
+	}
+
+	cleaned := stripTeamIDPrefix(folderName)
+	if cleaned != folderName {
+		if sig := m.matchDirect(cleaned); sig != nil {
+			return sig
+		}
+		if cleaned2 := stripSuffixes(cleaned); cleaned2 != cleaned {
+			if sig := m.matchDirect(cleaned2); sig != nil {
+				return sig
+			}
+		}
+	}
+
+	folderLower := strings.ToLower(folderName)
 	for bid := range m.index.BundleIDs {
-		if strings.EqualFold(bid, folderName) {
+		if strings.HasPrefix(folderLower, strings.ToLower(bid)+".") ||
+			strings.HasPrefix(folderLower, strings.ToLower(bid)+"-") {
+			return &core.Signal{
+				Kind:   "bundle_id",
+				Detail: "Bundle ID \"" + bid + "\" is prefix of folder \"" + folderName + "\"",
+				Weight: 1.0,
+			}
+		}
+	}
+
+	return nil
+}
+
+func (m *Matcher) matchDirect(name string) *core.Signal {
+	for bid := range m.index.BundleIDs {
+		if strings.EqualFold(bid, name) {
 			return &core.Signal{
 				Kind:   "bundle_id",
 				Detail: "Bundle ID " + bid + " matches installed app exactly",
@@ -144,7 +184,7 @@ func (m *Matcher) exactMatch(folderName string) *core.Signal {
 			}
 		}
 		shortID := shorterBundleID(bid)
-		if shortID != "" && strings.EqualFold(shortID, folderName) {
+		if shortID != "" && strings.EqualFold(shortID, name) {
 			return &core.Signal{
 				Kind:   "bundle_id",
 				Detail: "Bundle ID " + bid + " matches installed app (short form)",
@@ -153,33 +193,33 @@ func (m *Matcher) exactMatch(folderName string) *core.Signal {
 		}
 	}
 
-	for name := range m.index.Names {
-		if strings.EqualFold(name, folderName) {
+	for appName := range m.index.Names {
+		if strings.EqualFold(appName, name) {
 			return &core.Signal{
 				Kind:   "app_name",
-				Detail: "App name \"" + name + "\" matches folder exactly",
+				Detail: "App name \"" + appName + "\" matches folder exactly",
 				Weight: 1.0,
 			}
 		}
 	}
 
-	if parts := splitReverseDomain(folderName); len(parts) >= 3 {
+	if parts := splitReverseDomain(name); len(parts) >= 3 {
 		last := strings.ToLower(parts[len(parts)-1])
-		for name := range m.index.Names {
-			if strings.EqualFold(name, last) {
+		for appName := range m.index.Names {
+			if strings.EqualFold(appName, last) {
 				return &core.Signal{
 					Kind:   "reverse_domain",
-					Detail: "Reverse-domain \"" + folderName + "\" last component \"" + last + "\" matches installed app",
+					Detail: "Reverse-domain \"" + name + "\" last component \"" + last + "\" matches installed app",
 					Weight: 1.0,
 				}
 			}
 		}
 		combined := strings.ToLower(parts[len(parts)-2]) + " " + last
-		for name := range m.index.Names {
-			if strings.EqualFold(name, combined) {
+		for appName := range m.index.Names {
+			if strings.EqualFold(appName, combined) {
 				return &core.Signal{
 					Kind:   "reverse_domain",
-					Detail: "Reverse-domain \"" + folderName + "\" combined \"" + combined + "\" matches installed app",
+					Detail: "Reverse-domain \"" + name + "\" combined \"" + combined + "\" matches installed app",
 					Weight: 1.0,
 				}
 			}
@@ -189,20 +229,98 @@ func (m *Matcher) exactMatch(folderName string) *core.Signal {
 	return nil
 }
 
-func (m *Matcher) fuzzyMatch(folderName string) (string, float64) {
-	bestScore := 0.0
-	bestName := ""
+var knownSuffixes = []string{
+	".savedState",
+	".ShipIt",
+	"-ShipIt",
+	".ShipIt",
+	".appstore",
+	".loginhelper",
+	".Intents",
+	".ServiceExtension",
+	".ShareExtension",
+	".SafariExtension",
+	".SafariExtension2",
+	".WAAppKitBridgeService",
+	".RaycastAppIntents",
+	".iTermAI",
+	".Shared",
+	".findersync",
+	".finderhelper",
+	".fpext",
+	".photos-extension",
+	".quicklookpreviewextension",
+	".remove-background",
+	".thumbnailextension",
+	".PacketTunnel-DNSProxy",
+	".PacketTunnel-Dausos",
+	".PacketTunnel-OpenVPN",
+	".PacketTunnel-WireGuard",
+	".shared",
+	".private",
+}
 
-	for name := range m.index.Names {
-		score := fuzzyScore(folderName, name)
-		if score > bestScore {
-			bestScore = score
-			bestName = name
+func stripSuffixes(name string) string {
+	lower := strings.ToLower(name)
+	for _, s := range knownSuffixes {
+		if strings.HasSuffix(lower, strings.ToLower(s)) {
+			return name[:len(name)-len(s)]
 		}
 	}
+	return name
+}
 
-	if bestScore > 0.5 {
-		return bestName, bestScore
+func stripTeamIDPrefix(name string) string {
+	parts := strings.SplitN(name, ".", 3)
+	if len(parts) >= 2 && isTeamID(parts[0]) {
+		if len(parts) >= 3 && parts[1] == "group" {
+			return parts[2]
+		}
+		return strings.Join(parts[1:], ".")
+	}
+	if len(parts) >= 2 && parts[0] == "group" {
+		return strings.Join(parts[1:], ".")
+	}
+	if strings.HasPrefix(name, "--") {
+		if idx := strings.Index(name[2:], "-"); idx >= 0 {
+			return name[2+idx+1:]
+		}
+		return strings.TrimPrefix(name, "--AppIdentifierPrefix-")
+	}
+	return name
+}
+
+func isTeamID(s string) bool {
+	if len(s) != 10 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Matcher) fuzzyMatch(folderName string) (string, float64) {
+	if m.index == nil || len(m.index.Names) == 0 {
+		return "", 0
+	}
+
+	names := make([]string, 0, len(m.index.Names))
+	for name := range m.index.Names {
+		names = append(names, name)
+	}
+
+	matches := fuzzy.Find(folderName, names)
+	if len(matches) == 0 {
+		return "", 0
+	}
+
+	best := matches[0]
+	score := float64(best.Score) / 100.0
+	if score > 0.5 {
+		return best.Str, score
 	}
 	return "", 0
 }
@@ -250,39 +368,4 @@ func shorterBundleID(bid string) string {
 
 func splitReverseDomain(s string) []string {
 	return strings.Split(s, ".")
-}
-
-func fuzzyScore(a, b string) float64 {
-	a = strings.ToLower(a)
-	b = strings.ToLower(b)
-
-	if a == b {
-		return 1.0
-	}
-
-	if strings.Contains(a, b) || strings.Contains(b, a) {
-		return 0.8
-	}
-
-	common := commonPrefix(a, b)
-	if len(common) >= 3 {
-		return float64(len(common)) / float64(max(len(a), len(b)))
-	}
-
-	return 0.0
-}
-
-func commonPrefix(a, b string) string {
-	i := 0
-	for i < len(a) && i < len(b) && a[i] == b[i] {
-		i++
-	}
-	return a[:i]
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

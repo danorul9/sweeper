@@ -109,27 +109,6 @@ func TestAgeScoreOld(t *testing.T) {
 	}
 }
 
-func TestFuzzyScoreExact(t *testing.T) {
-	score := fuzzyScore("Docker", "Docker")
-	if score != 1.0 {
-		t.Errorf("expected 1.0 for exact match, got %f", score)
-	}
-}
-
-func TestFuzzyScoreContains(t *testing.T) {
-	score := fuzzyScore("VSCode", "Code")
-	if score < 0.7 {
-		t.Errorf("expected high score for containing match, got %f", score)
-	}
-}
-
-func TestFuzzyScoreNoMatch(t *testing.T) {
-	score := fuzzyScore("abc", "xyz")
-	if score != 0.0 {
-		t.Errorf("expected 0.0 for no match, got %f", score)
-	}
-}
-
 func TestMatchFingerprintDocker(t *testing.T) {
 	fp := matchFingerprint("Docker Desktop")
 	if fp == nil {

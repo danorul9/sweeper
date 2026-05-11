@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -92,6 +94,17 @@ func (s *Scanner) Scan() (*ScanResult, error) {
 		return nil, err
 	}
 
+	sort.SliceStable(items, func(i, j int) bool {
+		vi := items[i].Match
+		vj := items[j].Match
+		viLeftover := vi != nil && vi.Verdict == VerdictLeftover
+		vjLeftover := vj != nil && vj.Verdict == VerdictLeftover
+		if viLeftover != vjLeftover {
+			return viLeftover
+		}
+		return items[i].Size > items[j].Size
+	})
+
 	result := &ScanResult{
 		Items:     items,
 		TotalSize: totalSize,
@@ -106,7 +119,13 @@ func (s *Scanner) Scan() (*ScanResult, error) {
 }
 
 func (s *Scanner) scanLocation(ctx context.Context, loc Location, results chan<- Leftover) error {
-	folders, err := ListFolders(loc.Path)
+	var folders []string
+	var err error
+	if loc.Type == LocHiddenHome {
+		folders, err = ListHiddenFolders(loc.Path)
+	} else {
+		folders, err = ListFolders(loc.Path)
+	}
 	if err != nil {
 		return nil
 	}
@@ -119,6 +138,11 @@ func (s *Scanner) scanLocation(ctx context.Context, loc Location, results chan<-
 		}
 
 		folderName := filepath.Base(folderPath)
+		matchName := folderName
+
+		if loc.Type == LocHiddenHome {
+			matchName = strings.TrimPrefix(folderName, ".")
+		}
 
 		if s.shouldIgnore(folderName) {
 			continue
@@ -128,7 +152,7 @@ func (s *Scanner) scanLocation(ctx context.Context, loc Location, results chan<-
 			continue
 		}
 
-		if family := s.index.FamilyForFolder(folderName); family != nil {
+		if family := s.index.FamilyForFolder(matchName); family != nil {
 			if s.index.IsFamilyInstalled(*family) {
 				continue
 			}
@@ -139,9 +163,18 @@ func (s *Scanner) scanLocation(ctx context.Context, loc Location, results chan<-
 			continue
 		}
 
-		match := s.matcher.Match(folderName, folderPath, info.ModTime())
+		match := s.matcher.Match(matchName, folderPath, info.ModTime())
 		if match.Verdict == VerdictInstalled {
 			continue
+		}
+
+		if loc.Type == LocHiddenHome && match.Confidence < 0.4 {
+			match.Confidence = 0.4
+			match.Signals = append(match.Signals, Signal{
+				Kind:   "hidden_home",
+				Detail: "Hidden home directory — no matching installed app",
+				Weight: 0.4,
+			})
 		}
 
 		size := DirSize(folderPath)

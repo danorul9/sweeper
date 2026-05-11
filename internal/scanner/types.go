@@ -31,4 +31,5 @@ const (
 	LocFonts           LocationType = core.LocFonts
 	LocSyncedPrefs     LocationType = core.LocSyncedPrefs
 	LocGroupContainers LocationType = core.LocGroupContainers
+	LocHiddenHome      LocationType = core.LocHiddenHome
 )

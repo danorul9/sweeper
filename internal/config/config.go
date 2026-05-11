@@ -46,7 +46,7 @@ func Load() (*Config, error) {
 	sweeperDir := filepath.Join(configDir, "sweeper")
 	v.AddConfigPath(sweeperDir)
 
-	v.SetDefault("safe_mode", true)
+	v.SetDefault("safe_mode", false)
 	v.SetDefault("ignore", []string{})
 
 	if err := v.ReadInConfig(); err != nil {

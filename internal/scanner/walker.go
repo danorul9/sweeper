@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -80,6 +81,50 @@ func shouldSkipFolder(name string) bool {
 		"Caches":            false,
 		"com.apple.*":       false,
 		".DS_Store":         false,
+	}
+	return skip[name]
+}
+
+func ListHiddenFolders(basePath string) ([]string, error) {
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var folders []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, ".") {
+			continue
+		}
+		if shouldSkipHiddenFolder(name) {
+			continue
+		}
+		if e.IsDir() {
+			folders = append(folders, filepath.Join(basePath, name))
+		}
+	}
+	return folders, nil
+}
+
+func shouldSkipHiddenFolder(name string) bool {
+	skip := map[string]bool{
+		".":                    true,
+		"..":                   true,
+		".Trash":               true,
+		".Spotlight-V100":      true,
+		".DocumentRevisions-V100": true,
+		".fseventsd":           true,
+		".PKInstallSandboxManager": true,
+		".localized":           true,
+		".DS_Store":            true,
+		".file":                true,
+		".ssh":                 true,
+		".gnupg":               true,
+		".aws":                 true,
 	}
 	return skip[name]
 }

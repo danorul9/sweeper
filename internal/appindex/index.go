@@ -55,11 +55,13 @@ func Build() (*AppIndex, error) {
 		}
 	}
 
+	return idx, nil
+}
+
+func mergeKnownApps(idx *AppIndex) {
 	for name := range KnownAppNames {
 		idx.Names[name] = struct{}{}
 	}
-
-	return idx, nil
 }
 
 func splitVendor(bundleID string) []string {
@@ -187,6 +189,7 @@ func modTimeChanged(dir string, since time.Time) bool {
 func BuildOrLoadCached() (*AppIndex, error) {
 	cached, cachedAt, err := LoadCached()
 	if err == nil && cached != nil && !IsCacheStale(cachedAt) {
+		mergeKnownApps(cached)
 		return cached, nil
 	}
 
@@ -194,6 +197,8 @@ func BuildOrLoadCached() (*AppIndex, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	mergeKnownApps(idx)
 
 	if err := idx.Save(); err != nil {
 		return idx, nil

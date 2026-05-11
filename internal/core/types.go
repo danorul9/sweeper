@@ -45,9 +45,11 @@ type Leftover struct {
 }
 
 type ScanResult struct {
-	Items     []Leftover `json:"items"`
-	TotalSize int64      `json:"total_size"`
-	Duration  string     `json:"duration"`
+	Items          []Leftover `json:"items"`
+	TotalSize      int64      `json:"total_size"`
+	Duration       string     `json:"duration"`
+	AppCount       int        `json:"app_count"`
+	KnownAppsCount int        `json:"known_apps_count"`
 }
 
 type LocationType string
@@ -67,6 +69,7 @@ const (
 	LocFonts            LocationType = "Fonts"
 	LocSyncedPrefs      LocationType = "SyncedPreferences"
 	LocGroupContainers  LocationType = "Group Containers"
+	LocHiddenHome       LocationType = "Hidden Home"
 )
 
 type Location struct {

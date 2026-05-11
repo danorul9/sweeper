@@ -8,14 +8,44 @@ import (
 	"github.com/danorul9/sweeper/internal/core"
 )
 
+type screen int
+
+const (
+	screenMenu screen = iota
+	screenScan
+	screenApps
+	screenLarge
+	screenDupes
+	screenDoctor
+	screenReclaim
+	screenUndo
+	screenStats
+	screenLiveliness
+)
+
+type HubItem struct {
+	Name     string
+	Path     string
+	Size     int64
+	Detail   string
+	Signals  []string
+	IsHeader bool
+	InfoRows []string // bottom info panel rows for the focused item
+	AgeDays  int       // age of newest content in days, -1 if unknown
+}
+
 type model struct {
+	screen         screen
+	menuCursor     int
+	width, height  int
+	err            error
+	featureLoading bool
+	toast          string
+
 	results        *core.ScanResult
 	tab            int
 	cursor         int
 	selected       map[int]bool
-	width          int
-	height         int
-	err            error
 	confirmDelete  bool
 	deleting       bool
 	deletedCount   int
@@ -23,10 +53,46 @@ type model struct {
 	done           bool
 	searching      bool
 	searchQuery    string
+
+	items        []HubItem
+	fTitle       string
+	fTotal       string
+	fSelected    map[int]bool
+	fConfirmDel  bool
+	fDeleting    bool
+	fDeleted     bool
 }
 
-func InitialModel(results *core.ScanResult) model {
+var menuItems = []struct {
+	title       string
+	description string
+	screen      screen
+}{
+	{"Detected Apps", "Scan and list all installed applications", screenApps},
+	{"Orphan Scanner", "Find leftover files from uninstalled apps", screenScan},
+	{"Liveliness", "Evidence-based orphan detection for ~/.* directories", screenLiveliness},
+	{"Large Files", "Find files over 100MB", screenLarge},
+	{"Duplicates", "Find duplicate files by checksum", screenDupes},
+	{"Doctor", "Zombie services, dead symlinks, system cruft", screenDoctor},
+	{"Reclaim", "Safe caches & logs only", screenReclaim},
+	{"Undo Last Cleanup", "Restore files from Trash", screenUndo},
+	{"Stats", "Historical cleanup analytics", screenStats},
+}
+
+func InitialModel() model {
 	return model{
+		screen:     screenMenu,
+		menuCursor: 0,
+		selected:   make(map[int]bool),
+		fSelected:  make(map[int]bool),
+		width:      80,
+		height:     24,
+	}
+}
+
+func InitialScanModel(results *core.ScanResult) model {
+	return model{
+		screen:   screenScan,
 		results:  results,
 		tab:      0,
 		cursor:   0,
@@ -81,6 +147,26 @@ func (m model) selectedSize() int64 {
 	return total
 }
 
+func (m model) fTotalSelected() int {
+	count := 0
+	for _, sel := range m.fSelected {
+		if sel {
+			count++
+		}
+	}
+	return count
+}
+
+func (m model) fSelectedSize() int64 {
+	var total int64
+	for i := range m.items {
+		if m.fSelected[i] {
+			total += m.items[i].Size
+		}
+	}
+	return total
+}
+
 func locationTab(loc string) string {
 	switch loc {
 	case "Caches":
@@ -95,6 +181,8 @@ func locationTab(loc string) string {
 		return "App Support"
 	case "Containers":
 		return "Containers"
+	case "Hidden Home":
+		return "Hidden"
 	default:
 		return "Other"
 	}

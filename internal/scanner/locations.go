@@ -48,7 +48,17 @@ func SafeLocations() []Location {
 }
 
 func AggressiveLocations() []Location {
-	return LibraryLocations()
+	return append(LibraryLocations(), HiddenHomeLocations()...)
+}
+
+func HiddenHomeLocations() []Location {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	return []Location{
+		{Type: LocHiddenHome, Path: home},
+	}
 }
 
 func ReclaimLocations() []Location {

@@ -51,11 +51,15 @@ var AppleSystemFolders = []string{
 
 func IsSystemPath(name string) bool {
 	lower := strings.ToLower(name)
+
+	// Direct prefix match
 	for _, prefix := range AppleSystemPrefixes {
 		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
 			return true
 		}
 	}
+
+	// Check known Apple system folders
 	for _, folder := range AppleSystemFolders {
 		if filepathMatch(folder, name) {
 			return true
@@ -64,8 +68,27 @@ func IsSystemPath(name string) bool {
 			return true
 		}
 	}
+
+	// Handle group.com.apple.* (e.g. group.com.apple.Safari.SandboxBroker)
+	if strings.HasPrefix(lower, "group.com.apple.") {
+		return true
+	}
+
+	// Handle team-ID-prefixed Apple paths (e.g. EQHXZ8M8AV.com.apple.*)
+	parts := strings.SplitN(name, ".", 2)
+	if len(parts) == 2 && isTeamID(parts[0]) {
+		cleaned := strings.ToLower(parts[1])
+		for _, prefix := range AppleSystemPrefixes {
+			if strings.HasPrefix(cleaned, strings.ToLower(prefix)) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
+
+
 
 func filepathMatch(pattern, name string) bool {
 	if strings.Contains(pattern, "*") || strings.Contains(pattern, "?") {

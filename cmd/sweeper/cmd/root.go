@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/danorul9/sweeper/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +15,8 @@ var (
 on macOS. It scans library paths, cross-references leftovers against
 installed apps using bundle IDs, fingerprints, and confidence scoring.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return scanCmd.RunE(cmd, args)
+			ui.RunHub()
+			return nil
 		},
 	}
 	appVersion = "dev"
@@ -37,12 +39,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(scanCmd)
-	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(explainCmd)
-	rootCmd.AddCommand(undoCmd)
-	rootCmd.AddCommand(reclaimCmd)
-	rootCmd.AddCommand(statsCmd)
-	rootCmd.AddCommand(largeCmd)
-	rootCmd.AddCommand(dupesCmd)
 }

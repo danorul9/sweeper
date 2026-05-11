@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -91,7 +93,40 @@ var (
 			Foreground(lipgloss.Color("#8E8E93")).
 			Width(10).
 			Align(lipgloss.Right)
+
+	toastStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#30D158")).
+			Padding(0, 1)
+
+	groupHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#4A52B0")).
+				Padding(0, 1)
 )
+
+// ageStyle returns a colored human-readable age string with one decimal for months/years.
+func ageStyle(days int) string {
+	style := lipgloss.NewStyle().Width(9).Align(lipgloss.Right)
+	var s string
+	switch {
+	case days < 7:
+		s = fmt.Sprintf("%dd", days)
+		style = style.Foreground(lipgloss.Color("#46A758")) // green = recent
+	case days < 60:
+		s = fmt.Sprintf("%dd", days)
+		style = style.Foreground(lipgloss.Color("#F5A623")) // yellow = recent-ish
+	case days < 365:
+		m := float64(days) / 30.0
+		s = fmt.Sprintf("%.1fm", m)
+		style = style.Foreground(lipgloss.Color("#E58D00")) // orange = months
+	default:
+		y := float64(days) / 365.0
+		s = fmt.Sprintf("%.1fy", y)
+		style = style.Foreground(lipgloss.Color("#E5484D")) // red = old
+	}
+	return style.Render(s)
+}
 
 var tabNames = []string{
 	"Caches",
@@ -100,5 +135,6 @@ var tabNames = []string{
 	"Temp Items",
 	"App Support",
 	"Containers",
+	"Hidden",
 	"All",
 }
