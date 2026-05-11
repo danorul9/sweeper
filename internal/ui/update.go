@@ -343,12 +343,7 @@ func (m model) runDetectedApps() tea.Cmd {
 			size := appSize(ap)
 			totalSize += size
 
-			detail := bid
-			if detail == "" {
-				detail = loc
-			} else {
-				detail = bid + "  ·  " + loc
-			}
+			detail := loc
 
 			items = append(items, HubItem{
 				Name: name,

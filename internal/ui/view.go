@@ -162,7 +162,6 @@ func (m model) featureView() string {
 	// Horizontal padding from outer containers
 	// appStyle has Padding(1,2) = 2 left padding
 	// itemStyle has PaddingLeft(2) = 2 left padding
-	horizontalPad := 2 + 2 // appStyle left + itemStyle left
 
 	var lines []string
 	for i, item := range m.items {
@@ -193,15 +192,12 @@ func (m model) featureView() string {
 		if name == "" {
 			name = item.Path
 		}
-		// Show full path in the list for all feature screens
-		displayName := item.Path
-		if displayName == "" {
-			displayName = name
-		}
-		// Build left part: cursor + check + path
+		displayName := name
+		// Build left part (path, never truncated)
 		left := fmt.Sprintf("%s %s %s", cursor, check, displayName)
+		leftWidth := lipgloss.Width(left)
 
-		// Build right part: size + age + detail
+		// Build right part
 		sizeStr := ""
 		if item.Size > 0 {
 			sizeStr = sizeStyle.Render(formatBytes(item.Size))
@@ -210,31 +206,39 @@ func (m model) featureView() string {
 		if item.AgeDays >= 0 {
 			ageStr = "  " + ageStyle(item.AgeDays)
 		}
-		right := sizeStr + ageStr
+		baseRight := sizeStr + ageStr
+		baseRightWidth := lipgloss.Width(baseRight)
 
-		// Detail with dynamic truncation
-		if item.Detail != "" {
-			detailText := item.Detail
-			// Estimate space for detail: remaining width after left + right
-			leftWidth := lipgloss.Width(left)
-			rightWidth := lipgloss.Width(right)
-			detailBudget := m.width - leftWidth - rightWidth - horizontalPad - 2 // 2 for "  " prefix
-			if detailBudget < 4 {
-				detailBudget = 4
-			}
-			if len(detailText) > detailBudget-3 {
-				detailText = detailText[:detailBudget-3] + "..."
-			}
-			right += "  " + signalStyle.Render(detailText)
+		// Calculate available space for detail
+		// Total usable: m.width - 4 (appStyle pad) - 2 (itemStyle pad)
+		usable := m.width - 6
+		remaining := usable - leftWidth - baseRightWidth
+		if remaining < 1 {
+			remaining = 1
 		}
 
-		// Calculate gap to right-justify
-		gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - horizontalPad
+		detailStr := ""
+		if item.Detail != "" && remaining > 3 {
+			detailText := item.Detail
+			// Leave 3 chars minimum for "..."
+			maxDetail := remaining - 3
+			if maxDetail < 1 {
+				maxDetail = 1
+			}
+			if len(detailText) > maxDetail {
+				detailText = detailText[:maxDetail-1] + "…"
+			}
+			detailStr = "  " + signalStyle.Render(detailText)
+		}
+
+		// Calculate gap to push right part to the right edge
+		rightWidth := baseRightWidth + lipgloss.Width(detailStr)
+		gap := usable - leftWidth - rightWidth
 		if gap < 1 {
 			gap = 1
 		}
 
-		line := left + strings.Repeat(" ", gap) + right
+		line := left + strings.Repeat(" ", gap) + baseRight + detailStr
 		if i == m.cursor {
 			lines = append(lines, selectedItemStyle.Render(line))
 		} else {

@@ -1,102 +1,158 @@
-# Sweeper — macOS App Leftover Detector
+# Sweeper 🧹
 
-[![Release](https://img.shields.io/github/v/release/danorul9/sweeper?label=version)](https://github.com/danorul9/sweeper/releases)
-[![Go](https://img.shields.io/github/go-mod/go-version/danorul9/sweeper)](https://go.dev/)
-[![License](https://img.shields.io/github/license/danorul9/sweeper)](LICENSE)
+**Intelligent macOS leftover detector & cleaner.**
 
-Sweeper scans `~/Library` for orphaned files left behind by uninstalled applications and scores each item with explainable confidence. An interactive TUI hub gives you access to all features from one screen, or use individual CLI commands.
+Sweeper scans your Mac for files left behind by uninstalled applications — caches, support data, containers, saved state, and hidden dotdirs. It uses evidence-based "liveliness" scoring to distinguish between dead cruft and active data, with explainable confidence signals for every item.
 
-**Differentiator:** Bundle-ID intelligence, not heuristic guessing. If a folder's bundle ID matches an installed app, it's kept. If the app is gone, it's flagged. Suffix stripping, team-ID prefix handling, and prefix matching eliminate false positives before fuzzy matching runs.
-
-## Install
-
-```bash
-# Via Homebrew
-brew install danorul9/tap/sweeper
-
-# Or build from source
-git clone https://github.com/danorul9/sweeper.git
-cd sweeper
-make build
-sudo make install
-```
-
-## Usage
-
-```
-sweeper                         # Interactive TUI hub — menu with all features
-sweeper scan                    # CLI: scan for orphaned app leftovers
-sweeper large                   # CLI: find large files
-sweeper dupes                   # CLI: find duplicate files
-sweeper doctor                  # CLI: run system health checks
-sweeper reclaim                 # CLI: safe caches & logs scan
-sweeper undo                    # CLI: show last undo snapshot
-sweeper stats                   # CLI: show cleanup statistics
-sweeper watch                   # CLI: watch for new orphan files
-sweeper explain <path>          # CLI: explain why a folder is considered leftover
-sweeper --version               # Show version
-```
-
-The TUI hub has 8 features, each also available as a CLI subcommand:
-
-| Feature | CLI | Description |
-|---------|-----|-------------|
-| **Detected Apps** | — (TUI only) | List user-installed apps with sizes, select to trash |
-| **Orphan Scanner** | `sweeper scan` | Find leftover files from uninstalled apps |
-| **Large Files** | `sweeper large` | Find files over 100MB |
-| **Duplicates** | `sweeper dupes` | Find duplicate files by checksum |
-| **Doctor** | `sweeper doctor` | Zombie services, dead symlinks, system cruft |
-| **Reclaim** | `sweeper reclaim` | Safe caches & logs only |
-| **Undo Last Cleanup** | `sweeper undo` | Show last trash snapshot |
-| **Stats** | `sweeper stats` | Historical cleanup analytics |
-
-In the TUI, select a feature with arrow keys, press enter to run, browse results with vim keys, and press `esc` to return to the menu. Features support multi-select (`space`, `a` all, `n` none) and deletion (`d`).
-
-## How It Works
-
-```
-TUI Hub ─┬─ Detected Apps ─ App Index Builder → Plist parser (filters macOS defaults)
-          ├─ Orphan Scanner ─ Filesystem Scanner → Matcher → Scorer
-          ├─ Large Files
-          ├─ Duplicates ─ xxhash → SHA-256
-          ├─ Doctor → launchctl unload before trash
-          ├─ Reclaim
-          ├─ Undo
-          └─ Stats
-```
-
-1. **App Index** — Scans `/Applications`, `~/Applications`, Setapp. macOS default apps (`/System/Applications`, `com.apple.*` bundle IDs) are filtered out. Extracts `CFBundleIdentifier` from every `.app` via `howett.net/plist`. Cached at `~/.cache/sweeper/appindex.json`.
-2. **Matcher** — Multi-layer pipeline: exact (bundle ID) → suffix-stripped (`.savedState`, `.ShipIt`, etc.) → team-ID-prefix stripped → bundle-ID-prefix match → fingerprint → fuzzy (`sahilm/fuzzy` library) → heuristic (reverse-domain, camelCase, vendor prefixes). Each produces a `Verdict` (`Installed` / `Leftover` / `Uncertain`) + `Confidence` (0.0–1.0) + ordered `Signal[]` list.
-3. **Scorer** — Signals combine: bundle ID match (1.0), running process (0.95), fingerprint match (0.85), fuzzy similarity (0.50–0.65), age (±0.10).
-4. **Trash** — Moves files to `~/.Trash/` natively (no AppleScript). Falls back to `osascript` for cross-device moves. For launch agent plists, runs `launchctl unload` before trashing.
-5. **TUI Hub** — Bubbletea with lipgloss. Menu-driven hub with scroll-aware list views that dynamically fit header, tabs, list, detail panel, and footer within terminal height.
+> Not another "mac cleaner" that aggressively guesses. Sweeper shows you _why_ something is safe to delete.
 
 ## Features
 
-### Detected Apps
+- **Orphan Scanner** — scan `~/Library/Application Support`, `Caches`, `Containers`, `Saved Application State`, and more for leftover app files. Bundle ID matching, App Families (Google/Adobe/JetBrains groups), and fuzzy name matching.
+- **Liveliness Detection** — evidence-based scoring for `~/.*` dotdirs. Checks file age, open handles (`lsof`), binary on PATH, newest child file age, and directory contents. Produces DEAD / STALE / COLD / ALIVE verdicts.
+- **Explainable Results** — every item shows WHY it was flagged: "Modified 8 months ago", "No process has open handles", "Binary 'diffusionbee' not found on PATH".
+- **Doctor** — detect orphaned LaunchAgents, dead symlinks, stale login items, corrupted plists, old Xcode derived data, and iOS backups.
+- **Reclaim** — aggressively clean safe categories (caches, logs, temp files, saved state) without touching Application Support or Containers.
+- **Large Files** — find files > 100 MB in user directories.
+- **Duplicates** — find duplicate files using xxhash (fast first pass) + SHA-256 confirmation.
+- **Apple System Protection** — `com.apple.*`, `App Store`, `CloudDocs`, `CallHistoryDB`, `SyncServices`, `.ssh`, `.cups`, `.aws`, `.gnupg` and other system paths are never shown. Hard-blocked at the scoring level.
+- **Snapshot/Undo** — every deletion is recorded as a JSON snapshot. `sweeper undo` restores from Trash.
+- **Interactive TUI** — bubbletea terminal UI with tabs, search, selection, and detail panel showing path, size, evidence signals, 3 biggest files, newest file age, and directory contents.
+- **CLI mode** — all commands support `--json` for scripting and piping. Auto-detects when output is piped.
 
-Builds and displays the user-installed app index with real file sizes (recursive `Contents/` walk). macOS default apps (Safari, Mail, Calendar, etc.) are automatically filtered out. Supports selection and trashing — select apps with `space`, trash with `d`.
+## Installation
 
-### Orphan Scanner
+```bash
+brew install sweeper
+```
 
-Walks `~/Library/{Application Support,Caches,Logs,Containers,...}` and matches each folder against the installed app index. Items belonging to installed apps are filtered out; everything else is scored with explainable signals.
+Or build from source:
 
-- **Bundle-ID matching** — exact, suffix-stripped, team-ID-prefixed, and bundle-ID-prefix matching
-- **App Families** — Google, Adobe, JetBrains, Microsoft. If any family app is installed, vendor folders are kept.
-- **Fingerprint Database** — 30+ curated fingerprints for apps like Docker, Slack, Discord, VS Code, OBS
-- **Fuzzy Matching** — Uses `sahilm/fuzzy` library for substring similarity scoring
-- **Process Correlation** — Checks `ps` before flagging. Running process → installed.
-- **Age Scoring** — mtime tiers: <7d (suspicious), 30d+ (likely), 180d+ (highly likely)
-- **Explainable results** — each item shows the exact signals that produced its verdict and confidence
+```bash
+git clone https://github.com/danorul9/sweeper
+cd sweeper
+go build -o sweeper ./cmd/sweeper/
+```
 
-### Other Features
+## Quick Start
 
-- **Large Files** — Scans `~/Downloads`, `~/Desktop`, `~/Documents`, `~/Movies` for files over 100MB (configurable threshold).
-- **Duplicates** — xxhash first pass + SHA-256 verification. Groups duplicate files and shows reclaimable space.
-- **Doctor** — Checks launch agents, dead symlinks, Xcode DerivedData, iOS backups. Uses `launchctl unload` before trashing plists to prevent service crashes.
-- **Reclaim** — Safe scan mode: caches, logs, saved state, temp items only.
-- **Undo** — Loads the most recent delete snapshot and restores files from Trash.
-- **Stats** — Historical cleanup analytics: scans, deletes, space freed, recent activity.
+```bash
+# Interactive TUI hub
+sweeper
+
+# Scan for leftovers
+sweeper scan
+
+# Liveliness check for ~/.* dotdirs (from TUI menu)
+sweeper scan --liveliness
+
+# Explain why a specific folder is flagged
+sweeper explain ~/Library/Application\ Support/ON1
+
+# Run system diagnostics
+sweeper doctor
+
+# Reclaim safe caches and logs
+sweeper reclaim
+
+# Find large files
+sweeper large
+
+# Find duplicate files
+sweeper dupes
+
+# Undo last deletion
+sweeper undo
+```
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `sweeper` | Interactive TUI hub (default) |
+| `sweeper scan` | Scan for orphan app leftovers in ~/Library |
+| `sweeper explain <path>` | Show why a folder is considered leftover |
+| `sweeper doctor` | System diagnostics (zombie services, dead symlinks, etc.) |
+| `sweeper reclaim` | Safe cleanup of caches, logs, temp files |
+| `sweeper large` | Find files > 100 MB |
+| `sweeper dupes` | Find duplicate files by checksum |
+| `sweeper undo` | Restore files from last Trash snapshot |
+| `sweeper stats` | Historical cleanup analytics |
+| `sweeper watch` | Monitor ~/Library for new leftover creation |
+
+All commands support `--json` for machine-readable output.
+
+## Architecture
+
+```
+Filesystem Scanner
+    ↓
+Metadata Extractor
+    ↓
+App Index Builder (bundle IDs, /Applications, Homebrew, processes)
+    ↓
+3-Layer Matcher (exact → fuzzy → heuristic)
+    ↓
+Confidence Scorer (verdict + signals)
+    ↓
+Safety Filter (Apple system protection, blacklists)
+    ↓
+TUI (bubbletea) / CLI (JSON)
+```
+
+### Matching Pipeline
+
+1. **Exact (bundle ID)** — `howett.net/plist` parses `Info.plist` from every installed `.app`. Exact `CFBundleIdentifier` match = 1.0 confidence.
+2. **Fuzzy** — case-insensitive name similarity with multiple variants (lowercase, title case, `which -a` lookup).
+3. **Heuristic** — reverse-domain parsing, camelCase splitting, vendor prefix matching, App Families (Google/Adobe/JetBrains groups).
+
+### Liveliness Scoring
+
+Each scanned item receives a score based on evidence signals:
+
+| Signal | Weight | What it measures |
+|---|---|---|
+| `recent_mod` | +0.4 | Modified within 90 days |
+| `old_mod` | -0.3 | Not modified in 6+ months |
+| `open_handles` | +0.5 | `lsof` finds running process using this folder |
+| `no_open_handles` | -0.1 | No process has open handles |
+| `recent_child` | +0.3 | Newest child file is < 90 days old |
+| `all_children_old` | -0.3 | Newest child is 6+ months old |
+| `binary_on_path` | +0.6 | Corresponding binary found on `$PATH` |
+| `app_installed` | +0.5 | Matcher says app is currently installed |
+| `empty` | -0.4 | Directory is empty (0 bytes) |
+| `apple_system` | +1.5 | Apple system path — protected, never shown |
+
+### Verdicts
+
+| Score | Label | Meaning |
+|---|---|---|
+| > 0.5 | ALIVE | Actively used — hidden from results |
+| 0.3 – 0.5 | COLD | Some signs of life, user decides |
+| -0.1 – 0.3 | (hidden) | No signal — filtered out |
+| -0.5 – -0.1 | STALE | Weak evidence of disuse |
+| < -0.5 | DEAD | Strong evidence — safe to delete |
+
+### Protected Paths
+
+The following are **never shown** in results, regardless of evidence:
+
+- `com.apple.*` — all Apple system namespaces
+- `App Store`, `Automator`, `CloudDocs`, `CallHistoryDB`, `SyncServices`, `AddressBook`, `iCloud`, `Spotlight`, `Knowledge`, `Dock`
+- macOS daemons: `tipsd`, `contactsd`, `homeenergyd`, `identityservicesd`, `locationaccessstored`, `privatecloudcomputed`, etc.
+- Hidden dotfiles: `.ssh`, `.gnupg`, `.aws`, `.cups`, `.IdentityService`, `.ServiceHub`
+
+## Tech Stack
+
+- **Go 1.26** — single binary, no runtime dependencies
+- **bubbletea** — TUI framework
+- **lipgloss** — terminal styling
+- **cobra** — CLI framework
+- **viper** — configuration
+- **howett.net/plist** — macOS plist parsing
+- **xxhash** — fast file hashing (duplicates)
+- **fsnotify** — file system watching
+- **golang.org/x/sync** — errgroup + semaphore worker pool
 
 ## Configuration
 
@@ -106,18 +162,17 @@ Walks `~/Library/{Application Support,Caches,Logs,Containers,...}` and matches e
 ignore:
   - Google
   - Adobe
-safe_mode: false   # set true for caches + saved state only
+  - Steam
+safe_mode: true
 ```
 
-## Development
+## Safety
 
-```bash
-make build     # Compile to ./bin/sweeper
-make test      # Run all tests
-make vet       # go vet
-make install   # Build + copy to /usr/local/bin
-```
+- All deletions move to Trash — nothing is permanently deleted
+- Every deletion is saved as a JSON snapshot for `undo`
+- Apple system paths are hard-blocked at the scoring level
+- No telemetry — `--share-telemetry` is opt-in and only sends anonymous folder + bundle ID pairs
 
-Built with Go 1.26, [bubbletea](https://github.com/charmbracelet/bubbletea), [lipgloss](https://github.com/charmbracelet/lipgloss), [cobra](https://github.com/spf13/cobra), [viper](https://github.com/spf13/viper), [xxhash](https://github.com/cespare/xxhash), [howett.net/plist](https://howett.net/plist), [sahilm/fuzzy](https://github.com/sahilm/fuzzy), [willf/bloom](https://github.com/willf/bloom).
+## License
 
-Find a bug or have a feature request? [Open an issue](https://github.com/danorul9/sweeper/issues).
+MIT
