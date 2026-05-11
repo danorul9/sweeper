@@ -6,7 +6,7 @@ class Sweeper < Formula
 
   on_macos do
     url "https://github.com/danorul9/sweeper/releases/download/v#{version}/sweeper-#{version}-darwin-all"
-    sha256 "7daadb56759549e07b4f0a8ef8120067531f17188eaf6dc21f29c66f69925db4"
+    sha256 "c38e7d479dd6207fe41cae461aa1f3ff6ab34fb67aeddcc70616342cf52655f8"
   end
 
   def install
