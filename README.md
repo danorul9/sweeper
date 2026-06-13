@@ -6,6 +6,16 @@ Sweeper scans your Mac for files left behind by uninstalled applications — cac
 
 > Not another "mac cleaner" that aggressively guesses. Sweeper shows you _why_ something is safe to delete.
 
+## Screenshots
+
+| Interactive TUI Hub | Orphan Scanner (table) |
+|:---:|:---:|
+| ![TUI Hub](assets/screenshots/tui-hub.png) | ![Scan Results](assets/screenshots/scan-table.png) |
+
+| CLI Help & Commands |
+|:---:|
+| ![CLI Help](assets/screenshots/help.png) |
+
 ## Features
 
 - **Orphan Scanner** — scan `~/Library/Application Support`, `Caches`, `Containers`, `Saved Application State`, and more for leftover app files. Bundle ID matching, App Families (Google/Adobe/JetBrains groups), and fuzzy name matching.
