@@ -100,8 +100,8 @@ var (
 
 	groupHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(lipgloss.Color("#4A52B0")).
+				Foreground(lipgloss.Color("#1A1A2E")).
+				Background(lipgloss.Color("#F0B84D")).
 				Padding(0, 1)
 )
 
@@ -129,6 +129,7 @@ func ageStyle(days int) string {
 }
 
 var tabNames = []string{
+	"All",
 	"Caches",
 	"Saved State",
 	"Logs",
@@ -136,5 +137,5 @@ var tabNames = []string{
 	"App Support",
 	"Containers",
 	"Hidden",
-	"All",
+	"Dot Cache",
 }

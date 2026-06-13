@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/danorul9/sweeper/internal/large"
 	"github.com/spf13/cobra"
@@ -19,8 +20,10 @@ var largeCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("large scan: %w", err)
 		}
+		fmt.Printf("%12s  %s\n", "SIZE", "PATH")
+		fmt.Println(strings.Repeat("─", 60))
 		for _, f := range files {
-			fmt.Printf("%s (%d bytes)\n", f.Path, f.Size)
+			fmt.Printf("%12s  %s\n", humanSize(f.Size), f.Path)
 		}
 		return nil
 	},

@@ -27,6 +27,7 @@ func LibraryLocations() []Location {
 		{Type: LocSyncedPrefs, Path: filepath.Join(lib, "SyncedPreferences")},
 		{Type: LocGroupContainers, Path: filepath.Join(lib, "Group Containers")},
 		{Type: LocTemp, Path: filepath.Join(lib, "TemporaryItems")},
+		{Type: LocDotCache, Path: filepath.Join(home, ".cache")},
 	}
 }
 

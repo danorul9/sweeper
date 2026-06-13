@@ -92,10 +92,11 @@ func (m *Matcher) Match(folderName, folderPath string, modTime time.Time) *core.
 	if len(signals) == 0 {
 		signals = append(signals, core.Signal{
 			Kind:   "no_match",
-			Detail: "No matching signals found. Unknown folder.",
-			Weight: 0.1,
+			Detail: "No matching app found — folder is orphaned",
+			Weight: 0.30,
 		})
-		confidence = 0.1
+		verdict = core.VerdictLeftover
+		confidence = 0.30
 	}
 
 	if confidence > 1.0 {

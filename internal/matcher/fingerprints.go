@@ -166,6 +166,24 @@ var Fingerprints = []AppFingerprint{
 		Paths:     []string{"CleanMyMac", "com.macpaw.CleanMyMac"},
 	},
 	{
+		Name:      "OpenWhispr",
+		BundleIDs: []string{"com.openwhispr.app"},
+		Vendors:   []string{"openwhispr"},
+		Paths:     []string{"openwhispr"},
+	},
+	{
+		Name:      "HuggingFace Hub",
+		BundleIDs: []string{},
+		Vendors:   []string{"huggingface"},
+		Paths:     []string{"huggingface"},
+	},
+	{
+		Name:      "uv (Python)",
+		BundleIDs: []string{},
+		Vendors:   []string{},
+		Paths:     []string{"uv"},
+	},
+	{
 		Name:      "Wireshark",
 		BundleIDs: []string{"org.wireshark.*"},
 		Vendors:   []string{"wireshark"},

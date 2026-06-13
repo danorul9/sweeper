@@ -1,53 +1,35 @@
 package scanner
 
 import (
-	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"syscall"
 )
 
 func DirSize(path string) int64 {
-	var size int64
-	filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			size += stat.Blocks * 512
-		} else {
-			size += info.Size()
-		}
-		return nil
-	})
-	return size
+	// Use `du -sk` which is much faster than walking recursively in Go
+	// and avoids OOM on large cache directories with millions of files.
+	// macOS du doesn't support -b, so we use -sk (kilobytes) and multiply.
+	cmd := exec.Command("du", "-sk", path)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(out)), "\t", 2)
+	if len(parts) < 1 {
+		return 0
+	}
+	size, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return size * 1024
 }
 
 func DirSizeNonAPFS(path string) int64 {
-	var size int64
-	filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		size += info.Size()
-		return nil
-	})
-	return size
+	return DirSize(path)
 }
 
 func ListFolders(basePath string) ([]string, error) {
@@ -125,43 +107,9 @@ func shouldSkipHiddenFolder(name string) bool {
 		".ssh":                 true,
 		".gnupg":               true,
 		".aws":                 true,
+		".cache":               true,
 	}
 	return skip[name]
-}
-
-func scanDirWithContext(ctx context.Context, basePath string, maxDepth int) ([]string, error) {
-	var results []string
-	err := filepath.WalkDir(basePath, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		rel, err := filepath.Rel(basePath, path)
-		if err != nil {
-			return nil
-		}
-		if rel == "." {
-			return nil
-		}
-		depth := len(splitPath(rel))
-		if depth > maxDepth {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if d.IsDir() {
-			results = append(results, path)
-		}
-		return nil
-	})
-	return results, err
 }
 
 func splitPath(s string) []string {

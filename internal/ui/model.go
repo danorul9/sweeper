@@ -29,7 +29,8 @@ type HubItem struct {
 	Size     int64
 	Detail   string
 	Signals  []string
-	IsHeader bool
+	IsHeader       bool
+	IsColumnHeader bool
 	InfoRows []string // bottom info panel rows for the focused item
 	AgeDays  int       // age of newest content in days, -1 if unknown
 }
@@ -110,7 +111,7 @@ func (m model) filteredItems() []core.Leftover {
 	var filtered []core.Leftover
 	tabType := tabNames[m.tab]
 	for _, item := range m.results.Items {
-		if m.tab < len(tabNames)-1 && locationTab(item.Location) != tabType {
+		if tabType != "All" && locationTab(item.Location) != tabType {
 			continue
 		}
 		if m.searchQuery != "" && !matchesSearch(item, m.searchQuery) {
@@ -183,6 +184,8 @@ func locationTab(loc string) string {
 		return "Containers"
 	case "Hidden Home":
 		return "Hidden"
+	case "Dot Cache":
+		return "Dot Cache"
 	default:
 		return "Other"
 	}

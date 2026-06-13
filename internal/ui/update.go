@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,7 +63,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fTotal = msg.total
 		m.screen = msg.screen
 		m.cursor = 0
-		for m.cursor < len(m.items) && m.items[m.cursor].IsHeader {
+		for m.cursor < len(m.items) && (m.items[m.cursor].IsHeader || m.items[m.cursor].IsColumnHeader) {
 			m.cursor++
 		}
 		if m.cursor >= len(m.items) {
@@ -180,6 +181,10 @@ func (m model) handleScanKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for i := range m.results.Items {
 			m.selected[i] = true
 		}
+	case "n":
+		for i := range m.results.Items {
+			m.selected[i] = false
+		}
 	}
 
 	return m, nil
@@ -205,7 +210,7 @@ func (m model) handleFeatureKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
-			for m.cursor > 0 && m.items[m.cursor].IsHeader {
+			for m.cursor > 0 && (m.items[m.cursor].IsHeader || m.items[m.cursor].IsColumnHeader) {
 				m.cursor--
 			}
 		}
@@ -213,7 +218,7 @@ func (m model) handleFeatureKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		if m.cursor < len(m.items)-1 {
 			m.cursor++
-			for m.cursor < len(m.items)-1 && m.items[m.cursor].IsHeader {
+			for m.cursor < len(m.items)-1 && (m.items[m.cursor].IsHeader || m.items[m.cursor].IsColumnHeader) {
 				m.cursor++
 			}
 		}
@@ -221,12 +226,12 @@ func (m model) handleFeatureKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ", "a", "n", "d":
 		switch msg.String() {
 		case " ":
-			if len(m.items) > 0 && m.cursor < len(m.items) && !m.items[m.cursor].IsHeader {
+			if len(m.items) > 0 && m.cursor < len(m.items) && !m.items[m.cursor].IsHeader && !m.items[m.cursor].IsColumnHeader {
 				m.fSelected[m.cursor] = !m.fSelected[m.cursor]
 			}
 		case "a":
 			for i := range m.items {
-				if !m.items[i].IsHeader {
+				if !m.items[i].IsHeader && !m.items[i].IsColumnHeader {
 					m.fSelected[i] = true
 				}
 			}
@@ -318,6 +323,13 @@ func (m model) runDetectedApps() tea.Cmd {
 	return func() tea.Msg {
 		apps := appindex.ScanAllApplications()
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "APP",
+			Size:           1,
+			Detail:         "LOCATION      ",
+			AgeDays:        0,
+			IsColumnHeader: true,
+		})
 		var totalSize int64
 
 		for _, ap := range apps {
@@ -350,6 +362,7 @@ func (m model) runDetectedApps() tea.Cmd {
 				Path: ap,
 				Size: size,
 				Detail: detail,
+				AgeDays: computeAgeDays(ap),
 			})
 		}
 
@@ -431,12 +444,19 @@ func (m model) runLarge() tea.Cmd {
 		}
 
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "NAME",
+			Size:           1,
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		var total int64
 		for _, f := range files {
 			items = append(items, HubItem{
 				Name: filepath.Base(f.Path),
 				Path: f.Path,
 				Size: f.Size,
+				AgeDays: -1,
 			})
 			total += f.Size
 		}
@@ -456,26 +476,38 @@ func (m model) runDupes() tea.Cmd {
 		if err != nil {
 			return featureDoneMsg{screen: screenDupes, err: err}
 		}
-
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "NAME",
+			Size:           1,
+			Detail:         "MODIFIED",
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		var totalWaste int64
 		for _, g := range groups {
 			waste := g.TotalSize - g.Size
 			totalWaste += waste
-			// first file as the main item
+			// Group header
 			items = append(items, HubItem{
-				Name:    g.SHA256[:12],
-				Path:    g.Files[0].Path,
-				Size:    g.Size,
-				Detail:  fmt.Sprintf("%d copies, %s wasted", g.Count, formatBytes(waste)),
-				Signals: mapFilesToStrings(g.Files),
+				Name:     fmt.Sprintf("SHA:%s — %d copies, %s wasted", g.SHA256[:12], g.Count, formatBytes(waste)),
+				IsHeader: true,
 			})
+			// Sub-item per file copy
+			for _, f := range g.Files {
+				items = append(items, HubItem{
+					Name:   filepath.Base(f.Path),
+					Path:   f.Path,
+					Size:   f.Size,
+					Detail: f.ModTime,
+				AgeDays: -1,
+				})
+			}
 		}
-
 		return featureDoneMsg{
 			screen: screenDupes,
 			items:  items,
-			title:  fmt.Sprintf("Duplicates \u2014 %d groups  %s reclaimable", len(items), formatBytes(totalWaste)),
+			title:  fmt.Sprintf("Duplicates \u2014 %d groups  %s reclaimable", len(groups), formatBytes(totalWaste)),
 			total:  fmt.Sprintf("Total: %s reclaimable", formatBytes(totalWaste)),
 		}
 	}
@@ -489,17 +521,39 @@ func (m model) runDoctor() tea.Cmd {
 		}
 
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "ISSUE",
+			Detail:         "DESCRIPTION",
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		sevCounts := map[string]int{}
 		for _, iss := range issues {
 			sevCounts[iss.Severity]++
+		}
+		sevOrder := map[string]int{"error": 0, "warning": 1, "info": 2}
+		sort.SliceStable(issues, func(i, j int) bool {
+			return sevOrder[issues[i].Severity] < sevOrder[issues[j].Severity]
+		})
+		var lastSev string
+		for _, iss := range issues {
+			if iss.Severity != lastSev {
+				label := strings.ToUpper(iss.Severity) + "S"
+				items = append(items, HubItem{
+					Name:     fmt.Sprintf("%s — %d issues", label, sevCounts[iss.Severity]),
+					IsHeader: true,
+				})
+				lastSev = iss.Severity
+			}
 			items = append(items, HubItem{
 				Name:   iss.Category,
 				Path:   iss.Path,
-				Detail: fmt.Sprintf("[%s] %s", iss.Severity, iss.Description),
+				Detail: iss.Description,
+				AgeDays: -1,
 			})
 		}
 
-		title := fmt.Sprintf("Doctor \u2014 %d issues", len(items))
+		title := fmt.Sprintf("Doctor \u2014 %d issues", len(issues))
 		if n := sevCounts["error"]; n > 0 {
 			title += fmt.Sprintf("  (%d errors)", n)
 		}
@@ -533,12 +587,19 @@ func (m model) runReclaim() tea.Cmd {
 		}
 
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "NAME",
+			Size:           1,
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		var total int64
 		for _, item := range result.Items {
 			items = append(items, HubItem{
 				Name: item.Name,
 				Path: item.Path,
 				Size: item.Size,
+				AgeDays: -1,
 			})
 			total += item.Size
 		}
@@ -567,12 +628,19 @@ func (m model) runUndo() tea.Cmd {
 		}
 
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "FILE",
+			Size:           1,
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		var total int64
 		for _, si := range snapshot.Items {
 			items = append(items, HubItem{
 				Name: filepath.Base(si.Path),
 				Path: si.Path,
 				Size: si.Size,
+				AgeDays: -1,
 			})
 			total += si.Size
 		}
@@ -594,21 +662,54 @@ func (m model) runStats() tea.Cmd {
 		}
 
 		var items []HubItem
+		items = append(items, HubItem{
+			Name:           "METRIC",
+			Detail:         "VALUE",
+			AgeDays:        -1,
+			IsColumnHeader: true,
+		})
 		if stats.TotalScans > 0 || stats.TotalDeletes > 0 {
-			items = append(items, HubItem{Name: "Total scans", Detail: fmt.Sprintf("%d", stats.TotalScans)})
-			items = append(items, HubItem{Name: "Total deletes", Detail: fmt.Sprintf("%d", stats.TotalDeletes)})
-			items = append(items, HubItem{Name: "Successful", Detail: fmt.Sprintf("%d", stats.TotalSuccess)})
-			items = append(items, HubItem{Name: "Failed", Detail: fmt.Sprintf("%d", stats.TotalFail)})
-			items = append(items, HubItem{Name: "Space freed", Detail: formatBytes(stats.TotalSize)})
+			items = append(items, HubItem{
+				Name:     "Total scans",
+				Detail:   fmt.Sprintf("%d", stats.TotalScans),
+				AgeDays:  -1,
+			})
+			items = append(items, HubItem{
+				Name:     "Total deletes",
+				Detail:   fmt.Sprintf("%d", stats.TotalDeletes),
+				AgeDays:  -1,
+			})
+			items = append(items, HubItem{
+				Name:     "Successful",
+				Detail:   fmt.Sprintf("%d", stats.TotalSuccess),
+				AgeDays:  -1,
+			})
+			items = append(items, HubItem{
+				Name:     "Failed",
+				Detail:   fmt.Sprintf("%d", stats.TotalFail),
+				AgeDays:  -1,
+			})
+			items = append(items, HubItem{
+				Name:     "Space freed",
+				Detail:   formatBytes(stats.TotalSize),
+				AgeDays:  -1,
+			})
 			if !stats.FirstScan.IsZero() {
-				items = append(items, HubItem{Name: "First scan", Detail: stats.FirstScan.Format("Jan 2, 2006 15:04")})
+			items = append(items, HubItem{
+				Name:     "First scan",
+				Detail:   stats.FirstScan.Format("Jan 2, 2006 15:04"),
+				AgeDays:  -1,
+			})
 			}
 			if !stats.LastScan.IsZero() {
-				items = append(items, HubItem{Name: "Last scan", Detail: stats.LastScan.Format("Jan 2, 2006 15:04")})
+			items = append(items, HubItem{
+				Name:     "Last scan",
+				Detail:   stats.LastScan.Format("Jan 2, 2006 15:04"),
+				AgeDays:  -1,
+			})
 			}
 			if len(stats.RecentEntries) > 0 {
-				items = append(items, HubItem{Name: "", Detail: ""})
-				items = append(items, HubItem{Name: "Recent Activity", Detail: ""})
+				items = append(items, HubItem{Name: "Recent Activity", IsHeader: true})
 				for _, e := range stats.RecentEntries {
 					status := "OK"
 					if !e.Success {
@@ -618,6 +719,7 @@ func (m model) runStats() tea.Cmd {
 						Name: e.Timestamp.Format("Jan 2 15:04"),
 						Detail: fmt.Sprintf("[%s] %s  items=%d  size=%s",
 							status, e.Action, e.Items, formatBytes(e.Size)),
+						AgeDays: -1,
 					})
 				}
 			}
@@ -662,6 +764,16 @@ func (m model) runLiveliness() tea.Cmd {
 		}
 
 		var hubItems []HubItem
+
+		// Column header — rendered as a styled header bar at the top
+		hubItems = append(hubItems, HubItem{
+			Name:           "NAME",
+			Size:           1,
+			Detail:         "SCORE",
+			AgeDays:        0,
+			IsColumnHeader: true,
+		})
+
 		for i, item := range items {
 			if i == 0 || item.Dead != items[i-1].Dead {
 				label := "DEAD"
@@ -793,19 +905,12 @@ func (m model) executeFeatureDelete() (tea.Model, tea.Cmd) {
 	var paths []string
 	var items []core.Leftover
 	for i := range m.items {
-		if !m.fSelected[i] || m.items[i].IsHeader {
+		if !m.fSelected[i] || m.items[i].IsHeader || m.items[i].IsColumnHeader {
 			continue
 		}
 		item := m.items[i]
-		if m.screen == screenDupes {
-			for _, p := range item.Signals {
-				paths = append(paths, p)
-				items = append(items, core.Leftover{Path: p, Name: filepath.Base(p), Size: item.Size})
-			}
-		} else {
-			paths = append(paths, item.Path)
-			items = append(items, core.Leftover{Path: item.Path, Name: item.Name, Size: item.Size})
-		}
+		paths = append(paths, item.Path)
+		items = append(items, core.Leftover{Path: item.Path, Name: item.Name, Size: item.Size})
 	}
 
 	snapshot, err := actions.SaveSnapshot(items)
@@ -829,14 +934,6 @@ func (m model) executeFeatureDelete() (tea.Model, tea.Cmd) {
 
 	m.toast = fmt.Sprintf("Deleted %d items (%s)", len(paths), formatBytes(m.fSelectedSize()))
 	return m.backToMenu(), nil
-}
-
-func mapFilesToStrings(files []dupes.File) []string {
-	var s []string
-	for _, f := range files {
-		s = append(s, f.Path)
-	}
-	return s
 }
 
 // quickDirStats walks a directory to count files and subdirs and find newest file mod time.

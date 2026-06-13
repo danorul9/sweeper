@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/danorul9/sweeper/internal/appindex"
 	"github.com/danorul9/sweeper/internal/liveliness"
@@ -45,15 +46,32 @@ With no path, scans all hidden directories in ~/. With a path, scores a single d
 		if err != nil {
 			return err
 		}
+		fmt.Printf("%-6s  %6s  %10s  %s\n", "STATE", "SCORE", "SIZE", "NAME")
+		fmt.Println(strings.Repeat("─", 52))
 		for _, item := range items {
+			scoreStr := fmt.Sprintf("%.0f%%", item.Score*100)
+			sizeStr := humanSize(item.Size)
+			state := "COLD"
 			if item.Verdict == "dead" {
-				fmt.Printf("DEAD  %.1f  %d  %s\n", item.Score, item.Size, item.Name)
-			} else {
-				fmt.Printf("COLD  %.1f  %d  %s\n", item.Score, item.Size, item.Name)
+				state = "DEAD"
 			}
+			fmt.Printf("%-6s  %6s  %10s  %s\n", state, scoreStr, sizeStr, item.Name)
 		}
 		return nil
 	},
+}
+
+func humanSize(b int64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func init() {

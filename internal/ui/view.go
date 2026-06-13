@@ -123,7 +123,7 @@ func (m model) scanView() string {
 		b.WriteString("\n")
 	} else {
 		b.WriteString(m.tabView())
-		b.WriteString("\n")
+		b.WriteString("\n\n")
 	}
 	b.WriteString(m.listView())
 	b.WriteString("\n")
@@ -172,6 +172,55 @@ func (m model) featureView() string {
 			break
 		}
 
+		if item.IsColumnHeader {
+			// Plain text — matches data row alignment exactly
+			// Data rows: itemStyle PaddingLeft(2) + cursor + " " + check + " " = 6 before name
+			// groupHeaderStyle has Padding(0,1) = 1 left pad, so use 5 leading spaces
+			left := fmt.Sprintf("     %s", item.Name)
+			leftWidth := lipgloss.Width(left)
+
+			// Show labels only for columns that the feature actually displays
+			// Matches data row conditions: Size>0, AgeDays>=0, Detail!=""
+			sizeStr := ""
+			if item.Size > 0 {
+				sizeStr = fmt.Sprintf("%10s", "SIZE")
+			}
+			ageStr := ""
+			if item.AgeDays >= 0 {
+				ageStr = "  " + fmt.Sprintf("%9s", "AGE")
+			}
+			baseRight := sizeStr + ageStr
+			baseRightWidth := lipgloss.Width(baseRight)
+
+			usable := m.width - 6
+			remaining := usable - leftWidth - baseRightWidth
+			if remaining < 1 {
+				remaining = 1
+			}
+
+			detailStr := ""
+			if item.Detail != "" && remaining > 3 {
+				detailText := item.Detail
+				maxDetail := remaining - 3
+				if maxDetail < 1 {
+					maxDetail = 1
+				}
+				if len(detailText) > maxDetail {
+					detailText = detailText[:maxDetail-1] + "…"
+				}
+				detailStr = "  " + detailText
+			}
+
+			rightWidth := baseRightWidth + lipgloss.Width(detailStr)
+			gap := usable - leftWidth - rightWidth
+			if gap < 1 {
+				gap = 1
+			}
+
+			line := left + strings.Repeat(" ", gap) + baseRight + detailStr
+			lines = append(lines, groupHeaderStyle.Width(m.width-4).Render(line))
+			continue
+		}
 		if item.IsHeader {
 			hdr := groupHeaderStyle.Width(m.width - 4).Render(item.Name)
 			lines = append(lines, hdr)
@@ -302,7 +351,7 @@ func (m model) featureInfoPanel() string {
 		return ""
 	}
 	item := m.items[m.cursor]
-	if item.IsHeader || len(item.InfoRows) == 0 {
+	if item.IsHeader || item.IsColumnHeader || len(item.InfoRows) == 0 {
 		return ""
 	}
 
@@ -340,7 +389,7 @@ func (m model) featureInfoPanelHeight() int {
 		return 0
 	}
 	item := m.items[m.cursor]
-	if item.IsHeader || len(item.InfoRows) == 0 {
+	if item.IsHeader || item.IsColumnHeader || len(item.InfoRows) == 0 {
 		return 0
 	}
 	// 2 separator lines + max 5 content rows + 1 padding = 8
@@ -394,6 +443,20 @@ func (m model) listView() string {
 	}
 
 	var itemLines []string
+	// Column header — dynamic gap to match data row right-edge alignment
+	// Data rows: itemStyle PaddingLeft(2) + cursor+" "+check+" " = 6 before name
+	// groupHeaderStyle Padding(0,1) = 1 left pad, so use 5 leading spaces
+	left := fmt.Sprintf("     %-32s", "NAME")
+	rightPart := fmt.Sprintf("%10s %s", "SIZE", "VERDICT")
+	usable := m.width - 6
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(rightPart)
+	gap := usable - leftWidth - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+	headerLine := left + strings.Repeat(" ", gap) + rightPart
+	itemLines = append(itemLines, groupHeaderStyle.Width(m.width-4).Render(headerLine), "")
 	for i, item := range items {
 		if i < start {
 			continue
@@ -424,7 +487,17 @@ func (m model) listView() string {
 
 		badge := m.verdictBadge(item.Match)
 
-		line := fmt.Sprintf("%s %s %-32s %s %s", cursor, check, name, sizeStr, badge)
+		// Build left and right parts with dynamic gap — matches featureView pattern
+		left := fmt.Sprintf("%s %s %s", cursor, check, name)
+		leftWidth := lipgloss.Width(left)
+		baseRight := sizeStr + " " + badge
+		baseRightWidth := lipgloss.Width(baseRight)
+		usable := m.width - 6
+		gap := usable - leftWidth - baseRightWidth
+		if gap < 1 {
+			gap = 1
+		}
+		line := left + strings.Repeat(" ", gap) + baseRight
 		if i == m.cursor {
 			itemLines = append(itemLines, selectedItemStyle.Render(line))
 		} else {
@@ -435,7 +508,7 @@ func (m model) listView() string {
 }
 
 func (m model) globalIndex(localIdx int) int {
-	if m.tab >= len(tabNames)-1 {
+	if tabNames[m.tab] == "All" {
 		return localIdx
 	}
 	count := 0

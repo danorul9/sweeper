@@ -70,6 +70,7 @@ const (
 	LocSyncedPrefs      LocationType = "SyncedPreferences"
 	LocGroupContainers  LocationType = "Group Containers"
 	LocHiddenHome       LocationType = "Hidden Home"
+	LocDotCache         LocationType = "Dot Cache"
 )
 
 type Location struct {

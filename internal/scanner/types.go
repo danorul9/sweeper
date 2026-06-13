@@ -32,4 +32,5 @@ const (
 	LocSyncedPrefs     LocationType = core.LocSyncedPrefs
 	LocGroupContainers LocationType = core.LocGroupContainers
 	LocHiddenHome      LocationType = core.LocHiddenHome
+	LocDotCache        LocationType = core.LocDotCache
 )
