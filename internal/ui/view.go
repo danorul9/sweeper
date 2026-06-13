@@ -81,17 +81,15 @@ func (m model) menuView() string {
 
 	var items []string
 	for i, mi := range menuItems {
-		cursor := "  "
 		if i == m.menuCursor {
-			cursor = cursorStyle.Render("\u25b8 ")
-		}
-		line := fmt.Sprintf("%s%s", cursor, mi.title)
-		if i == m.menuCursor {
-			items = append(items, selectedItemStyle.Render(line))
+			// Use Width() to set box width — same pattern as groupHeaderStyle which renders full-width correctly
+			plainCursor := "\u25b8 "
+			items = append(items, selectedItemStyle.Width(m.width-4).Render(fmt.Sprintf("  %s%s", plainCursor, mi.title)))
+			items = append(items, selectedItemDescStyle.Width(m.width-4).Render(fmt.Sprintf("   %s", mi.description)))
 		} else {
-			items = append(items, itemStyle.Render(line))
+			items = append(items, itemStyle.Render(fmt.Sprintf("  %s", mi.title)))
+			items = append(items, itemStyle.Render(fmt.Sprintf("   %s", detailValueStyle.Render(mi.description))))
 		}
-		items = append(items, itemStyle.Render(fmt.Sprintf("   %s", detailValueStyle.Render(mi.description))))
 		items = append(items, "")
 	}
 
@@ -173,51 +171,7 @@ func (m model) featureView() string {
 		}
 
 		if item.IsColumnHeader {
-			// Plain text — matches data row alignment exactly
-			// Data rows: itemStyle PaddingLeft(2) + cursor + " " + check + " " = 6 before name
-			// groupHeaderStyle has Padding(0,1) = 1 left pad, so use 5 leading spaces
-			left := fmt.Sprintf("     %s", item.Name)
-			leftWidth := lipgloss.Width(left)
-
-			// Show labels only for columns that the feature actually displays
-			// Matches data row conditions: Size>0, AgeDays>=0, Detail!=""
-			sizeStr := ""
-			if item.Size > 0 {
-				sizeStr = fmt.Sprintf("%10s", "SIZE")
-			}
-			ageStr := ""
-			if item.AgeDays >= 0 {
-				ageStr = "  " + fmt.Sprintf("%9s", "AGE")
-			}
-			baseRight := sizeStr + ageStr
-			baseRightWidth := lipgloss.Width(baseRight)
-
-			usable := m.width - 6
-			remaining := usable - leftWidth - baseRightWidth
-			if remaining < 1 {
-				remaining = 1
-			}
-
-			detailStr := ""
-			if item.Detail != "" && remaining > 3 {
-				detailText := item.Detail
-				maxDetail := remaining - 3
-				if maxDetail < 1 {
-					maxDetail = 1
-				}
-				if len(detailText) > maxDetail {
-					detailText = detailText[:maxDetail-1] + "…"
-				}
-				detailStr = "  " + detailText
-			}
-
-			rightWidth := baseRightWidth + lipgloss.Width(detailStr)
-			gap := usable - leftWidth - rightWidth
-			if gap < 1 {
-				gap = 1
-			}
-
-			line := left + strings.Repeat(" ", gap) + baseRight + detailStr
+			line, _, _, _, _ := m.headerLineAndBounds(item)
 			lines = append(lines, groupHeaderStyle.Width(m.width-4).Render(line))
 			continue
 		}
@@ -443,11 +397,14 @@ func (m model) listView() string {
 	}
 
 	var itemLines []string
-	// Column header — dynamic gap to match data row right-edge alignment
+	// Column header with sort arrows — dynamic gap to match data row right-edge alignment
 	// Data rows: itemStyle PaddingLeft(2) + cursor+" "+check+" " = 6 before name
 	// groupHeaderStyle Padding(0,1) = 1 left pad, so use 5 leading spaces
-	left := fmt.Sprintf("     %-32s", "NAME")
-	rightPart := fmt.Sprintf("%10s %s", "SIZE", "VERDICT")
+	nameLabel := "NAME" + m.sortArrow("name")
+	sizeLabel := "SIZE" + m.sortArrow("size")
+	verdictLabel := "VERDICT" + m.sortArrow("verdict")
+	left := fmt.Sprintf("     %-32s", nameLabel)
+	rightPart := fmt.Sprintf("%10s %s", sizeLabel, verdictLabel)
 	usable := m.width - 6
 	leftWidth := lipgloss.Width(left)
 	rightWidth := lipgloss.Width(rightPart)
@@ -643,4 +600,90 @@ func (m model) deletingView() string {
 	return appStyle.Render(
 		confirmTitleStyle.Render(fmt.Sprintf("Deleting %d items...", m.totalSelected())),
 	)
+}
+
+// sortArrow returns " ▲", " ▼", or "" depending on whether col is the active sort column.
+func (m model) sortArrow(col string) string {
+	if m.sortColumn != col {
+		return ""
+	}
+	if m.sortAsc {
+		return " ▲"
+	}
+	return " ▼"
+}
+
+// colBounds describes the clickable X range for a column header.
+type colBounds struct {
+	left, right int // 0,0 if column is not present on this screen
+}
+
+// headerLineAndBounds builds the column header line and returns X boundaries for mouse detection.
+// Both rendering and mouse handling use this to stay in sync — single source of truth.
+func (m model) headerLineAndBounds(h HubItem) (line string, name, size, age, detail colBounds) {
+	nameText := h.Name + m.sortArrow("name")
+	left := fmt.Sprintf("     %s", nameText)
+	leftWidth := lipgloss.Width(left)
+
+	sizeStr := ""
+	sizeWidth := 0
+	if h.Size > 0 {
+		sizeLabel := "SIZE" + m.sortArrow("size")
+		sizeStr = fmt.Sprintf("%10s", sizeLabel)
+		sizeWidth = 10
+	}
+
+	ageStr := ""
+	if h.AgeDays >= 0 {
+		ageLabel := "AGE" + m.sortArrow("age")
+		ageStr = "  " + fmt.Sprintf("%9s", ageLabel)
+	}
+
+	baseRight := sizeStr + ageStr
+	baseRightWidth := lipgloss.Width(baseRight)
+
+	usable := m.width - 6
+	remaining := usable - leftWidth - baseRightWidth
+	if remaining < 1 {
+		remaining = 1
+	}
+
+	detailStr := ""
+	if h.Detail != "" && remaining > 3 {
+		detailText := h.Detail + m.sortArrow("detail")
+		maxDetail := remaining - 3
+		if maxDetail < 1 {
+			maxDetail = 1
+		}
+		if len(detailText) > maxDetail {
+			detailText = detailText[:maxDetail-1] + "\u2026"
+		}
+		detailStr = "  " + detailText
+	}
+
+	rightWidth := baseRightWidth + lipgloss.Width(detailStr)
+	gap := usable - leftWidth - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+
+	line = left + strings.Repeat(" ", gap) + baseRight + detailStr
+
+	// Column X positions relative to terminal left edge
+	// appStyle left pad = 2, groupHeaderStyle left pad = 1 → total 3
+	padLeft := 3
+
+	name = colBounds{padLeft, padLeft + leftWidth}
+
+	if sizeWidth > 0 {
+		size = colBounds{padLeft + leftWidth + gap, padLeft + leftWidth + gap + sizeWidth}
+	}
+	if h.AgeDays >= 0 {
+		age = colBounds{padLeft + leftWidth + gap + sizeWidth + 2, padLeft + leftWidth + gap + sizeWidth + 2 + 9}
+	}
+	if len(detailStr) > 0 {
+		detail = colBounds{padLeft + leftWidth + gap + sizeWidth + 11 + 2, 0} // sizeWidth + 11 (age) + 2 (detail prefix)
+	}
+
+	return
 }

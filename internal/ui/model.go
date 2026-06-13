@@ -61,6 +61,8 @@ type model struct {
 	fSelected    map[int]bool
 	fConfirmDel  bool
 	fDeleting    bool
+	sortColumn   string
+	sortAsc      bool
 	fDeleted     bool
 }
 

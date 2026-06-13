@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/danorul9/sweeper/internal/actions"
 	"github.com/danorul9/sweeper/internal/appindex"
 	"github.com/danorul9/sweeper/internal/config"
@@ -48,6 +48,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.results = msg.result
 		m.screen = screenScan
+		m.sortColumn = ""
+		m.sortAsc = true
 		m.cursor = 0
 		m.tab = 0
 		return m, nil
@@ -62,6 +64,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fTitle = msg.title
 		m.fTotal = msg.total
 		m.screen = msg.screen
+		m.sortColumn = ""
+		m.sortAsc = true
 		m.cursor = 0
 		for m.cursor < len(m.items) && (m.items[m.cursor].IsHeader || m.items[m.cursor].IsColumnHeader) {
 			m.cursor++
@@ -71,14 +75,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
 
 	return m, nil
 }
-
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "s":
+		return m.cycleSortColumn(), nil
+	case "S":
+		return m.toggleSortDir(), nil
+	}
 	switch m.screen {
 	case screenMenu:
 		return m.handleMenuKey(msg)
@@ -86,6 +98,281 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleScanKey(msg)
 	default:
 		return m.handleFeatureKey(msg)
+	}
+}
+func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionRelease || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	switch m.screen {
+	case screenApps, screenLarge, screenLiveliness, screenDupes, screenDoctor, screenReclaim, screenUndo, screenStats:
+		return m.handleFeatureMouse(msg)
+	case screenScan:
+		return m.handleScanMouse(msg)
+	}
+	return m, nil
+}
+
+func (m model) handleFeatureMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if len(m.items) == 0 || !m.items[0].IsColumnHeader {
+		return m, nil
+	}
+
+	// Layout: appStyle.Padding(1,2) = 1 top, 2 left; then: title(1) + ""(1) + body...
+	// Column header (body[0]) Y position = 3 (0-indexed from terminal top)
+	if msg.Y != 3 {
+		return m, nil
+	}
+
+	// Use shared header layout computation — single source of truth
+	h := m.items[0]
+	_, name, size, age, detail := m.headerLineAndBounds(h)
+
+	// Determine which column was clicked
+	col := ""
+	if size.left > 0 && msg.X >= size.left && msg.X < size.right {
+		col = "size"
+	} else if age.left > 0 && msg.X >= age.left && msg.X < age.right {
+		col = "age"
+	} else if detail.left > 0 && msg.X >= detail.left {
+		col = "detail"
+	} else if msg.X >= name.left && msg.X < name.right {
+		col = "name"
+	}
+
+	if col == "" {
+		return m, nil
+	}
+
+	// Toggle direction if same column clicked
+	asc := m.sortAsc
+	if m.sortColumn == col {
+		asc = !asc
+	}
+
+	// Sort items
+	m.sortItems(col, asc)
+	m.sortColumn = col
+	m.sortAsc = asc
+	return m, nil
+}
+
+func (m model) handleScanMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.results == nil || len(m.results.Items) == 0 {
+		return m, nil
+	}
+
+	// Column header Y: Raw content split by \n: header(0) + tab/search(1) + blank(2) + NAME header(3)
+	// (appStyle top pad may not add a visible line in terminal coords)
+	// Y=3 normal, Y=2 searching
+	headerY := 3
+	if m.searching {
+		headerY = 2
+	}
+	if msg.Y != headerY {
+		return m, nil
+	}
+
+	// Replicate scan header rendering math for X positions
+	nameLabel := "NAME" + m.sortArrow("name")
+	left := fmt.Sprintf("     %-32s", nameLabel)
+	leftWidth := lipgloss.Width(left)
+	sizePart := fmt.Sprintf("%10s", "SIZE"+m.sortArrow("size"))
+	verdictLabel := "VERDICT" + m.sortArrow("verdict")
+
+	usable := m.width - 6
+	rightWidth := lipgloss.Width(sizePart) + 1 + lipgloss.Width(verdictLabel) // %10s + " " + verdict
+	gap := usable - leftWidth - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+
+	padLeft := 3 // appStyle(2) + groupHeaderStyle(1)
+	nameEnd := padLeft + leftWidth
+	sizeStart := nameEnd + gap
+	sizeEnd := sizeStart + 10
+
+	// Determine which column was clicked (check NAME first, then SIZE, then VERDICT)
+	col := ""
+	if msg.X >= padLeft && msg.X < nameEnd {
+		col = "name"
+	} else if msg.X >= sizeStart && msg.X < sizeEnd {
+		col = "size"
+	} else if msg.X >= sizeEnd+1 {
+		col = "verdict"
+	}
+
+	if col == "" {
+		return m, nil
+	}
+
+	// Toggle direction if same column clicked
+	asc := m.sortAsc
+	if m.sortColumn == col {
+		asc = !asc
+	}
+
+	m.sortScanItems(col, asc)
+	m.sortColumn = col
+	m.sortAsc = asc
+	m.cursor = 0
+	return m, nil
+}
+
+func (m model) sortItems(col string, asc bool) {
+	if len(m.items) < 2 {
+		return
+	}
+
+	// Check if this screen has section headers (Duplicates, Doctor, Stats)
+	hasSections := false
+	for i := 1; i < len(m.items); i++ {
+		if m.items[i].IsHeader {
+			hasSections = true
+			break
+		}
+	}
+
+	if hasSections {
+		// Sort within each section, preserving section header positions.
+		// Pattern: [column header, section header, data rows, section header, data rows, ...]
+		start := 0
+		for i := 1; i < len(m.items); i++ {
+			if m.items[i].IsHeader {
+				if start > 0 {
+					m.sortSlice(m.items[start:i], col, asc)
+				}
+				start = i + 1
+			}
+		}
+		// Last block
+		if start > 0 && start < len(m.items) {
+			m.sortSlice(m.items[start:], col, asc)
+		}
+	} else {
+		// Flat screen: sort all data rows (skip column header at index 0)
+		m.sortSlice(m.items[1:], col, asc)
+	}
+}
+
+func (m model) sortSlice(data []HubItem, col string, asc bool) {
+	sort.SliceStable(data, func(i, j int) bool {
+		var less bool
+		switch col {
+		case "name":
+			less = data[i].Name < data[j].Name
+		case "size":
+			less = data[i].Size < data[j].Size
+		case "age":
+			less = data[i].AgeDays < data[j].AgeDays
+		case "detail":
+			less = data[i].Detail < data[j].Detail
+		default:
+			return false
+		}
+		if !asc {
+			less = !less
+		}
+		return less
+	})
+}
+
+// sortableColumns returns the ordered list of sortable columns for the current screen.
+// For feature screens: derived from the column header HubItem conditions.
+// For scan screen: fixed set of columns.
+func (m model) sortableColumns() []string {
+	cols := []string{"name"}
+	if len(m.items) > 0 && m.items[0].IsColumnHeader {
+		h := m.items[0]
+		if h.Size > 0 {
+			cols = append(cols, "size")
+		}
+		if h.AgeDays >= 0 {
+			cols = append(cols, "age")
+		}
+		if h.Detail != "" {
+			cols = append(cols, "detail")
+		}
+		return cols
+	}
+	if m.screen == screenScan {
+		return []string{"name", "size", "verdict"}
+	}
+	return cols
+}
+
+// sortScanItems sorts m.results.Items by the given column and direction.
+func (m model) sortScanItems(col string, asc bool) {
+	sort.SliceStable(m.results.Items, func(i, j int) bool {
+		var less bool
+		switch col {
+		case "name":
+			less = m.results.Items[i].Name < m.results.Items[j].Name
+		case "size":
+			less = m.results.Items[i].Size < m.results.Items[j].Size
+		case "verdict":
+			// Sort by confidence descending by default (higher = more certain of verdict)
+			ci, cj := 0.0, 0.0
+			if m.results.Items[i].Match != nil {
+				ci = m.results.Items[i].Match.Confidence
+			}
+			if m.results.Items[j].Match != nil {
+				cj = m.results.Items[j].Match.Confidence
+			}
+			less = ci < cj
+		default:
+			return false
+		}
+		if !asc {
+			less = !less
+		}
+		return less
+	})
+}
+
+// cycleSortColumn advances m.sortColumn to the next available column and sorts.
+func (m model) cycleSortColumn() model {
+	cols := m.sortableColumns()
+	if len(cols) == 0 {
+		return m
+	}
+	nextCol := cols[0]
+	for i, c := range cols {
+		if c == m.sortColumn {
+			nextCol = cols[(i+1)%len(cols)]
+			break
+		}
+	}
+	m.sortColumn = nextCol
+	m.sortAsc = true
+	m.applySort()
+	if m.screen == screenScan {
+		m.cursor = 0
+	} else {
+		m.cursor = 0
+		for m.cursor < len(m.items) && (m.items[m.cursor].IsHeader || m.items[m.cursor].IsColumnHeader) {
+			m.cursor++
+		}
+	}
+	return m
+}
+
+// toggleSortDir reverses the current sort direction. Sets to "name" ascending if no column is active.
+func (m model) toggleSortDir() model {
+	if m.sortColumn == "" {
+		m.sortColumn = "name"
+	}
+	m.sortAsc = !m.sortAsc
+	m.applySort()
+	return m
+}
+
+// applySort delegates to the correct sort implementation based on screen.
+func (m model) applySort() {
+	if m.screen == screenScan {
+		m.sortScanItems(m.sortColumn, m.sortAsc)
+	} else {
+		m.sortItems(m.sortColumn, m.sortAsc)
 	}
 }
 
@@ -1047,6 +1334,7 @@ func RunHub() {
 		m,
 		tea.WithAltScreen(),
 		tea.WithANSICompressor(),
+		tea.WithMouseCellMotion(),
 	)
 
 	if _, err := p.Run(); err != nil {

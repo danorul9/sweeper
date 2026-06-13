@@ -26,13 +26,17 @@ var (
 			Bold(true)
 
 	itemStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
+			PaddingLeft(2).
+			Bold(true)
 
 	selectedItemStyle = lipgloss.NewStyle().
-				PaddingLeft(2).
-				Foreground(lipgloss.Color("#5E6AD2")).
+				Foreground(lipgloss.Color("#FFFFFF")).
+				Background(lipgloss.Color("#3A3570")).
 				Bold(true)
 
+	selectedItemDescStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#C7C2EA")).
+				Background(lipgloss.Color("#3A3570"))
 	cursorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#5E6AD2")).
 			Bold(true)
