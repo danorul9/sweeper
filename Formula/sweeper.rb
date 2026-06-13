@@ -1,12 +1,12 @@
 class Sweeper < Formula
   desc "macOS app leftover detector & cleaner"
   homepage "https://github.com/danorul9/sweeper"
-  version "0.3.1"
+  version "0.4.0"
   license "MIT"
 
   on_macos do
     url "https://github.com/danorul9/sweeper/releases/download/v#{version}/sweeper-#{version}-darwin-all"
-    sha256 "c38e7d479dd6207fe41cae461aa1f3ff6ab34fb67aeddcc70616342cf52655f8"
+    sha256 "acfaa914a3bb891ecb106726bc0582a2fd3d593bc0ba012f438d2d69af0f36c6"
   end
 
   def install
