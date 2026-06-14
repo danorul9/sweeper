@@ -320,6 +320,25 @@ func (m *Matcher) fuzzyMatch(folderName string) (string, float64) {
 
 	best := matches[0]
 	score := float64(best.Score) / 100.0
+	if score > 1.0 {
+		score = 1.0
+	}
+	// Length-ratio guard: reject when candidate is >2x the query length.
+	// Catches short queries matching much longer names via substring overlap
+	// (e.g. "virt-manager" → "Karabiner-VirtualHIDDevice-Manager" at 2.83x).
+	q := strings.ToLower(folderName)
+	c := strings.ToLower(best.Str)
+	minLen := len(q)
+	if minLen > len(c) {
+		minLen = len(c)
+	}
+	maxLen := len(q)
+	if maxLen < len(c) {
+		maxLen = len(c)
+	}
+	if maxLen > minLen*2 {
+		return "", 0
+	}
 	if score > 0.5 {
 		return best.Str, score
 	}
@@ -331,6 +350,9 @@ func (m *Matcher) heuristicMatch(folderName string) []core.Signal {
 
 	if parts := splitReverseDomain(folderName); len(parts) >= 2 && len(parts) <= 6 {
 		for _, part := range parts {
+			if part == "" {
+				continue
+			}
 			for name := range m.index.Names {
 				if strings.Contains(strings.ToLower(name), strings.ToLower(part)) {
 					signals = append(signals, core.Signal{

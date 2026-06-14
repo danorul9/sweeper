@@ -169,7 +169,7 @@ var Fingerprints = []AppFingerprint{
 		Name:      "OpenWhispr",
 		BundleIDs: []string{"com.openwhispr.app"},
 		Vendors:   []string{"openwhispr"},
-		Paths:     []string{"openwhispr"},
+		Paths:     []string{"openwhispr", "open-whispr"},
 	},
 	{
 		Name:      "HuggingFace Hub",

@@ -221,3 +221,24 @@ func TestFingerprintNotion(t *testing.T) {
 		t.Fatal("expected fingerprint for Notion")
 	}
 }
+
+func TestHeuristicEmptyPart(t *testing.T) {
+	idx := appindex.NewAppIndex()
+	idx.Names["SomeApp"] = struct{}{}
+	m := New(idx)
+	signals := m.heuristicMatch(".hidden")
+	if len(signals) > 0 {
+		t.Errorf("expected empty part to be skipped, got %d signals", len(signals))
+	}
+}
+
+func TestFuzzyLengthRatio(t *testing.T) {
+	m := &Matcher{index: &appindex.AppIndex{}}
+	m.index.Names = map[string]struct{}{
+		"Karabiner-VirtualHIDDevice-Manager": {},
+	}
+	name, score := m.fuzzyMatch("virt-manager")
+	if score > 0.5 {
+		t.Errorf("expected length-ratio rejection, got '%s' at %.2f", name, score)
+	}
+}

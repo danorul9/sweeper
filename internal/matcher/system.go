@@ -47,6 +47,49 @@ var AppleSystemFolders = []string{
 	"Reminders",
 	"Notes",
 	"Messages",
+	"App Store",
+	"Automator",
+	"CloudDocs",
+	"CallHistoryDB",
+	"CallHistoryTransactions",
+	"SyncServices",
+	"AddressBook",
+	"Spotlight",
+	"Knowledge",
+	"Dock",
+	"DiskImages",
+	"Assistant",
+	"Baseband",
+	"ControlCenter",
+	"Mobile Sync",
+	"Summary-Events",
+	"HomeEnergyD",
+	"TipsD",
+	"NetworkServiceProxy",
+	"iCloudMailAgent",
+	"IdentityServicesD",
+	"LocationAccessStored",
+	"PrivateCloudComputeD",
+	"DifferentialPrivacy",
+	"StickersD",
+	"ContactsD",
+	"ICDD",
+	"askpermissiond",
+	"PrivacyPreservingMeasurement",
+	"SiriTTS",
+	"SiriTTSService",
+	"ssu",
+}
+
+
+var ProtectedDotDirs = []string{
+	".cups",
+	".ssh",
+	".gnupg",
+	".aws",
+	".identityservice",
+	".servicehub",
+	".localized",
 }
 
 func IsSystemPath(name string) bool {
@@ -65,6 +108,13 @@ func IsSystemPath(name string) bool {
 			return true
 		}
 		if strings.EqualFold(folder, name) {
+			return true
+		}
+	}
+
+	// Check protected user home dotdirs
+	for _, dotdir := range ProtectedDotDirs {
+		if strings.EqualFold(dotdir, name) {
 			return true
 		}
 	}

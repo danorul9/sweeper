@@ -41,8 +41,12 @@ var scanCmd = &cobra.Command{
 			return fmt.Errorf("scan: %w", err)
 		}
 
+		if printed, err := maybeJSON(cmd, result); printed || err != nil {
+			return err
+		}
+
 		fmt.Printf("%-10s  %10s  %s\n", "CONFIDENCE", "SIZE", "PATH")
-		fmt.Println(strings.Repeat("─", 60))
+		fmt.Println(strings.Repeat("\u2500", 60))
 		for _, item := range result.Items {
 			conf := fmt.Sprintf("%.0f%%", item.Match.Confidence*100)
 			fmt.Printf("%-10s  %10s  %s\n", conf, humanSize(item.Size), item.Path)
